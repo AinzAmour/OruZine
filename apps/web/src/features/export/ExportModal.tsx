@@ -69,6 +69,8 @@ export const ExportModal: React.FC<ExportModalProps> = ({ isOpen, onClose }) => 
                   opacity: obj.opacity,
                   imageElement: imgEl,
                   imageFit: obj.imageFit,
+                  mask: obj.mask,
+                  paperShadow: obj.paperShadow,
                 };
               }
               if (obj.type === 'text') {
@@ -85,6 +87,21 @@ export const ExportModal: React.FC<ExportModalProps> = ({ isOpen, onClose }) => 
                   fontSizePt: obj.fontSizePt,
                   color: obj.color,
                   bold: obj.bold,
+                };
+              }
+              if (obj.type === 'sticker') {
+                return {
+                  id: obj.id,
+                  type: 'sticker' as const,
+                  xPercent: obj.xPercent,
+                  yPercent: obj.yPercent,
+                  wPercent: obj.wPercent,
+                  hPercent: obj.hPercent,
+                  rotation: obj.rotation,
+                  opacity: obj.opacity,
+                  stickerType: obj.stickerType,
+                  color: obj.color,
+                  paperShadow: true,
                 };
               }
               return {

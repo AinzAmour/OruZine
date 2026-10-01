@@ -2,7 +2,9 @@ import type { Margins, PaperSize } from '@oruzine/formats';
 import { create } from 'zustand';
 import { db } from './db';
 
-export type ObjectType = 'image' | 'text' | 'shape';
+export type ObjectType = 'image' | 'text' | 'shape' | 'sticker';
+
+export type ImageMask = 'none' | 'circle' | 'star' | 'torn-edge' | 'stamp';
 
 export interface BaseZineObject {
   id: string;
@@ -21,6 +23,8 @@ export interface ImageObject extends BaseZineObject {
   type: 'image';
   imageDataUrl: string | null;
   imageFit: 'cover' | 'contain';
+  mask?: ImageMask;
+  paperShadow?: boolean;
 }
 
 export interface TextObject extends BaseZineObject {
@@ -39,7 +43,24 @@ export interface ShapeObject extends BaseZineObject {
   strokeWidth?: number;
 }
 
-export type ZineObject = ImageObject | TextObject | ShapeObject;
+export type StickerType =
+  | 'tape-masking'
+  | 'tape-duct'
+  | 'tape-clear'
+  | 'staple'
+  | 'pushpin'
+  | 'arrow'
+  | 'star'
+  | 'barcode'
+  | 'halftone-dot';
+
+export interface StickerObject extends BaseZineObject {
+  type: 'sticker';
+  stickerType: StickerType;
+  color?: string;
+}
+
+export type ZineObject = ImageObject | TextObject | ShapeObject | StickerObject;
 
 export interface DocumentPage {
   pageNumber: number; // 1-indexed in reader order
@@ -96,6 +117,7 @@ export interface ZineDocumentState {
 
   // Object manipulations
   addObject: (pageIndex: number, obj: ZineObject) => void;
+  addSticker: (pageIndex: number, stickerType: StickerType, color?: string) => void;
   updateObject: (pageIndex: number, id: string, updates: Partial<ZineObject>) => void;
   removeObject: (pageIndex: number, id: string) => void;
   duplicateObject: (pageIndex: number, id: string) => void;
@@ -346,6 +368,26 @@ export const useDocumentStore = create<ZineDocumentState>((set, get) => ({
       return { pages: nextPages, selectedObjectId: obj.id };
     });
     get().triggerAutosave();
+  },
+
+  addSticker: (pageIndex, stickerType, color) => {
+    const isTape = stickerType.startsWith('tape-');
+    const isSmall = stickerType === 'staple' || stickerType === 'pushpin';
+    const stickerObj: StickerObject = {
+      id: `sticker-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`,
+      type: 'sticker',
+      stickerType,
+      xPercent: 0.35,
+      yPercent: 0.35,
+      wPercent: isTape ? 0.35 : isSmall ? 0.12 : 0.22,
+      hPercent: isTape ? 0.08 : isSmall ? 0.06 : 0.18,
+      rotation: isTape ? (Math.random() > 0.5 ? 4 : -4) : 0,
+      opacity: stickerType === 'tape-clear' ? 0.6 : 0.95,
+      locked: false,
+      hidden: false,
+      color,
+    };
+    get().addObject(pageIndex, stickerObj);
   },
 
   updateObject: (pageIndex, id, updates) => {

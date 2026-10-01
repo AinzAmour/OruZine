@@ -7,6 +7,7 @@ import {
   Image as ImageIcon,
   Layers,
   Lock,
+  Sparkles,
   Square,
   Trash2,
   Type,
@@ -43,6 +44,8 @@ export const LayersPanel: React.FC = () => {
         return <Type size={13} className="text-spot" />;
       case 'shape':
         return <Square size={13} className="text-spot" />;
+      case 'sticker':
+        return <Sparkles size={13} className="text-spot" />;
     }
   };
 
@@ -52,6 +55,9 @@ export const LayersPanel: React.FC = () => {
     }
     if (obj.type === 'image') {
       return 'Image Layer';
+    }
+    if (obj.type === 'sticker') {
+      return `Sticker (${obj.stickerType})`;
     }
     return `Shape (${obj.shapeType})`;
   };

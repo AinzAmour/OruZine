@@ -14,7 +14,7 @@ export interface ExportTextBox {
 
 export interface ExportObject {
   id: string;
-  type: 'image' | 'text' | 'shape';
+  type: 'image' | 'text' | 'shape' | 'sticker';
   xPercent: number;
   yPercent: number;
   wPercent: number;
@@ -23,6 +23,8 @@ export interface ExportObject {
   opacity: number;
   imageElement?: HTMLImageElement | ImageBitmap | null;
   imageFit?: 'cover' | 'contain';
+  mask?: string;
+  paperShadow?: boolean;
   text?: string;
   fontSizePt?: number;
   color?: string;
@@ -31,6 +33,7 @@ export interface ExportObject {
   fillColor?: string;
   strokeColor?: string;
   strokeWidth?: number;
+  stickerType?: string;
 }
 
 export interface ExportPageData {
@@ -134,6 +137,14 @@ export async function renderImposedSheetToCanvas(
           ctx.rotate((obj.rotation * Math.PI) / 180);
         }
 
+        // Paper-edge drop shadow for realistic collage cutouts
+        if (obj.paperShadow) {
+          ctx.shadowColor = 'rgba(0, 0, 0, 0.4)';
+          ctx.shadowBlur = Math.round(dpi * 0.015);
+          ctx.shadowOffsetX = Math.round(dpi * 0.006);
+          ctx.shadowOffsetY = Math.round(dpi * 0.01);
+        }
+
         if (obj.type === 'shape') {
           ctx.beginPath();
           if (obj.shapeType === 'circle') {
@@ -151,6 +162,14 @@ export async function renderImposedSheetToCanvas(
             ctx.stroke();
           }
         } else if (obj.type === 'image' && obj.imageElement) {
+          ctx.save();
+          // Mask clipping
+          if (obj.mask === 'circle') {
+            ctx.beginPath();
+            ctx.ellipse(0, 0, objW / 2, objH / 2, 0, 0, Math.PI * 2);
+            ctx.clip();
+          }
+
           const img = obj.imageElement;
           const fit = obj.imageFit ?? 'cover';
           const imgRatio = img.width / img.height;
@@ -173,6 +192,30 @@ export async function renderImposedSheetToCanvas(
           }
 
           ctx.drawImage(img, -drawW / 2, -drawH / 2, drawW, drawH);
+          ctx.restore();
+        } else if (obj.type === 'sticker') {
+          const st = obj.stickerType;
+          if (st === 'tape-masking') {
+            ctx.fillStyle = opts.grayscale ? '#e0e0e0' : obj.color || '#ebdcb9';
+            ctx.fillRect(-objW / 2, -objH / 2, objW, objH);
+          } else if (st === 'tape-duct') {
+            ctx.fillStyle = opts.grayscale ? '#333333' : obj.color || '#34383c';
+            ctx.fillRect(-objW / 2, -objH / 2, objW, objH);
+          } else if (st === 'tape-clear') {
+            ctx.fillStyle = 'rgba(255, 255, 255, 0.45)';
+            ctx.fillRect(-objW / 2, -objH / 2, objW, objH);
+          } else if (st === 'staple') {
+            ctx.fillStyle = '#8c8c8c';
+            ctx.fillRect(-objW / 2, -objH / 4, objW, objH / 2);
+          } else if (st === 'pushpin') {
+            ctx.fillStyle = opts.grayscale ? '#000000' : obj.color || '#ff2d6b';
+            ctx.beginPath();
+            ctx.arc(0, 0, Math.min(objW, objH) / 2, 0, Math.PI * 2);
+            ctx.fill();
+          } else {
+            ctx.fillStyle = opts.grayscale ? '#000000' : obj.color || '#121212';
+            ctx.fillRect(-objW / 2, -objH / 2, objW, objH);
+          }
         } else if (obj.type === 'text' && obj.text) {
           const scaledFontSize = ((obj.fontSizePt || 12) / 72) * dpi;
           ctx.font = `${obj.bold ? 'bold ' : ''}${scaledFontSize}px "Courier New", monospace`;

@@ -15,6 +15,7 @@
     "@oruzine/formats": "workspace:*",
     "@oruzine/export": "workspace:*",
     "@oruzine/render": "workspace:*",
+    "@oruzine/ai": "workspace:*",
     "clsx": "^2.1.1",
     "dexie": "^4.0.11",
     "immer": "^11.0.1",

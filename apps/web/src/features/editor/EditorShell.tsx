@@ -2,15 +2,27 @@ import { SIGNATURE_LOOKS } from '@oruzine/filters';
 import { FORMAT_REGISTRY, MINI_8_FORMAT } from '@oruzine/formats';
 import { impose } from '@oruzine/imposition';
 import {
+  AlignCenter,
+  AlignEndVertical,
+  AlignJustify,
+  AlignLeft,
+  AlignRight,
+  AlignStartVertical,
+  AlignVerticalSpaceAround,
   ArrowLeft,
   ArrowRight,
+  Bold,
   BookOpen,
   CheckCircle2,
   Circle,
   Copy,
   Download,
+  FlipHorizontal,
+  FlipVertical,
   FolderOpen,
+  Grid,
   Image as ImageIcon,
+  Italic,
   Maximize2,
   Redo,
   RotateCcw,
@@ -22,6 +34,7 @@ import {
   Square,
   Trash2,
   Type,
+  Underline,
   Undo,
   ZoomIn,
   ZoomOut,
@@ -32,9 +45,11 @@ import {
   type ImageMask,
   type ImageObject,
   type ShapeObject,
+  type TextAlign,
   type TextObject,
   useDocumentStore,
 } from '../../stores/documentStore';
+import { isHeicFile, processImageFile } from '../../utils/imageLoader';
 import { CollagePaletteModal } from '../collage/CollagePaletteModal';
 import { ImageCutoutModal } from '../collage/ImageCutoutModal';
 import { StickerView } from '../collage/StickerView';
@@ -42,6 +57,7 @@ import { ExportModal } from '../export/ExportModal';
 import { FilterStackModal, type FilterStackTarget } from '../filters/FilterStackModal';
 import { FormatSetupModal } from '../format/FormatSetupModal';
 import { LooksModal } from '../looks/LooksModal';
+import { FlipbookReader } from '../preview/FlipbookReader';
 import { FoldGuideModal } from '../preview/FoldGuideModal';
 import {
   downloadProjectFile,
@@ -71,6 +87,8 @@ export const EditorShell: React.FC = () => {
     updateObject,
     removeObject,
     duplicateObject,
+    alignObject,
+    nudgeObject,
     reorderPages,
     resetDocument,
     isAutosaved,
@@ -83,7 +101,7 @@ export const EditorShell: React.FC = () => {
     activeLookId,
   } = useDocumentStore();
 
-  const [viewMode, setViewMode] = useState<'page' | 'sheet'>('page');
+  const [viewMode, setViewMode] = useState<'page' | 'flipbook' | 'sheet'>('page');
   const [previewSheetIndex, setPreviewSheetIndex] = useState<number>(0);
   const [zoom, setZoom] = useState<number>(100);
   const [isSetupOpen, setIsSetupOpen] = useState<boolean>(false);
@@ -94,6 +112,11 @@ export const EditorShell: React.FC = () => {
   const [isCutoutModalOpen, setIsCutoutModalOpen] = useState<boolean>(false);
   const [isTemplateGalleryOpen, setIsTemplateGalleryOpen] = useState<boolean>(false);
   const [filterModalTarget, setFilterModalTarget] = useState<FilterStackTarget | null>(null);
+
+  const [isConvertingHeic, setIsConvertingHeic] = useState<boolean>(false);
+  const [showSafetyMargins, setShowSafetyMargins] = useState<boolean>(true);
+  const [showGridDots, setShowGridDots] = useState<boolean>(false);
+  const [isDraggingOverCanvas, setIsDraggingOverCanvas] = useState<boolean>(false);
 
   const activeFormat = FORMAT_REGISTRY[formatId] || MINI_8_FORMAT;
   const plan = impose(activeFormat, pages.length, {
@@ -123,7 +146,7 @@ export const EditorShell: React.FC = () => {
     });
   }, [checkSavedSession]);
 
-  // Global Keyboard shortcuts
+  // Global Keyboard shortcuts & Object Nudging
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
       const isInput =
@@ -150,6 +173,24 @@ export const EditorShell: React.FC = () => {
         }
       }
 
+      // Arrow keys nudging selected object
+      if (!isInput && selectedObjectId) {
+        const step = e.shiftKey ? 0.04 : 0.01;
+        if (e.key === 'ArrowLeft') {
+          e.preventDefault();
+          nudgeObject(activePageIndex, selectedObjectId, -step, 0);
+        } else if (e.key === 'ArrowRight') {
+          e.preventDefault();
+          nudgeObject(activePageIndex, selectedObjectId, step, 0);
+        } else if (e.key === 'ArrowUp') {
+          e.preventDefault();
+          nudgeObject(activePageIndex, selectedObjectId, 0, -step);
+        } else if (e.key === 'ArrowDown') {
+          e.preventDefault();
+          nudgeObject(activePageIndex, selectedObjectId, 0, step);
+        }
+      }
+
       // Escape to deselect
       if (e.key === 'Escape') {
         setSelectedObjectId(null);
@@ -166,37 +207,69 @@ export const EditorShell: React.FC = () => {
     selectedObjectId,
     activePageIndex,
     removeObject,
+    nudgeObject,
     setSelectedObjectId,
   ]);
 
-  // Add new Image object
-  const handleImageFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+  // Process and add image file (with Apple HEIC/HEIF decoding support)
+  const handleImageFile = async (file: File) => {
+    const isHeic = isHeicFile(file);
+    if (isHeic) setIsConvertingHeic(true);
+
+    try {
+      const { dataUrl } = await processImageFile(file);
+      const newImg: ImageObject = {
+        id: `img-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
+        type: 'image',
+        imageDataUrl: dataUrl,
+        imageFit: 'cover',
+        xPercent: 0.1,
+        yPercent: 0.1,
+        wPercent: 0.8,
+        hPercent: 0.5,
+        rotation: 0,
+        opacity: 1,
+        locked: false,
+        hidden: false,
+        flipX: false,
+        flipY: false,
+      };
+      addObject(activePageIndex, newImg);
+    } catch (err) {
+      console.error('Image import failed:', err);
+      alert(err instanceof Error ? err.message : 'Could not import image file.');
+    } finally {
+      if (isHeic) setIsConvertingHeic(false);
+    }
+  };
+
+  // Add new Image object from file picker
+  const handleImageFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (file) {
-      const reader = new FileReader();
-      reader.onload = (event) => {
-        const dataUrl = event.target?.result as string;
-        if (dataUrl) {
-          const newImg: ImageObject = {
-            id: `img-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
-            type: 'image',
-            imageDataUrl: dataUrl,
-            imageFit: 'cover',
-            xPercent: 0.1,
-            yPercent: 0.1,
-            wPercent: 0.8,
-            hPercent: 0.5,
-            rotation: 0,
-            opacity: 1,
-            locked: false,
-            hidden: false,
-          };
-          addObject(activePageIndex, newImg);
-        }
-      };
-      reader.readAsDataURL(file);
+      await handleImageFile(file);
     }
     if (e.target) e.target.value = '';
+  };
+
+  // Drag and drop onto canvas
+  const handleCanvasDragOver = (e: React.DragEvent) => {
+    e.preventDefault();
+    setIsDraggingOverCanvas(true);
+  };
+
+  const handleCanvasDragLeave = (e: React.DragEvent) => {
+    e.preventDefault();
+    setIsDraggingOverCanvas(false);
+  };
+
+  const handleCanvasDrop = async (e: React.DragEvent) => {
+    e.preventDefault();
+    setIsDraggingOverCanvas(false);
+    const file = e.dataTransfer.files?.[0];
+    if (file && (file.type.startsWith('image/') || isHeicFile(file))) {
+      await handleImageFile(file);
+    }
   };
 
   // Export .oruzine project file (ZIP containing document.json + image blobs)
@@ -364,7 +437,17 @@ export const EditorShell: React.FC = () => {
                 viewMode === 'page' ? 'bg-spot text-spot-contrast font-bold' : 'hover:bg-paper'
               }`}
             >
-              Page View
+              Page Edit
+            </button>
+            <button
+              type="button"
+              onClick={() => setViewMode('flipbook')}
+              className={`px-2.5 py-1 border-l border-chrome-border transition-colors ${
+                viewMode === 'flipbook' ? 'bg-spot text-spot-contrast font-bold' : 'hover:bg-paper'
+              }`}
+              title="Virtual 3D Flip-Book / Two-Page Spread Reader"
+            >
+              Flipbook Reader 📖
             </button>
             <button
               type="button"
@@ -373,7 +456,7 @@ export const EditorShell: React.FC = () => {
                 viewMode === 'sheet' ? 'bg-spot text-spot-contrast font-bold' : 'hover:bg-paper'
               }`}
             >
-              Imposed Sheet
+              Imposed Sheet 🖨️
             </button>
           </div>
 
@@ -547,12 +630,128 @@ export const EditorShell: React.FC = () => {
           className="flex-1 bg-paper/60 relative flex flex-col items-center justify-center p-8 overflow-auto"
           onClick={() => setSelectedObjectId(null)}
         >
-          {/* Zoom controls */}
+          {/* Quick Object Alignment Bar (when an object is selected in page view) */}
+          {viewMode === 'page' && selectedObjectId && (
+            // biome-ignore lint/a11y/useKeyWithClickEvents: Toolbar container event isolation
+            // biome-ignore lint/a11y/noStaticElementInteractions: Toolbar container event isolation
+            <div
+              className="absolute top-4 left-6 flex items-center gap-1 bg-chrome border border-chrome-border p-1 text-xs z-30 shadow-sm animate-in fade-in duration-100"
+              onClick={(e) => e.stopPropagation()}
+            >
+              <span className="text-[10px] uppercase font-bold text-ink/60 px-1">Align:</span>
+              <button
+                type="button"
+                onClick={() => alignObject(activePageIndex, selectedObjectId, 'left')}
+                className="p-1 hover:bg-paper border border-transparent hover:border-chrome-border"
+                title="Align Left"
+              >
+                <AlignLeft size={13} />
+              </button>
+              <button
+                type="button"
+                onClick={() => alignObject(activePageIndex, selectedObjectId, 'center')}
+                className="p-1 hover:bg-paper border border-transparent hover:border-chrome-border"
+                title="Center Horizontally"
+              >
+                <AlignCenter size={13} />
+              </button>
+              <button
+                type="button"
+                onClick={() => alignObject(activePageIndex, selectedObjectId, 'right')}
+                className="p-1 hover:bg-paper border border-transparent hover:border-chrome-border"
+                title="Align Right"
+              >
+                <AlignRight size={13} />
+              </button>
+              <div className="h-3 w-px bg-chrome-border mx-0.5" />
+              <button
+                type="button"
+                onClick={() => alignObject(activePageIndex, selectedObjectId, 'top')}
+                className="p-1 hover:bg-paper border border-transparent hover:border-chrome-border"
+                title="Align Top"
+              >
+                <AlignStartVertical size={13} />
+              </button>
+              <button
+                type="button"
+                onClick={() => alignObject(activePageIndex, selectedObjectId, 'middle')}
+                className="p-1 hover:bg-paper border border-transparent hover:border-chrome-border"
+                title="Center Vertically"
+              >
+                <AlignVerticalSpaceAround size={13} />
+              </button>
+              <button
+                type="button"
+                onClick={() => alignObject(activePageIndex, selectedObjectId, 'bottom')}
+                className="p-1 hover:bg-paper border border-transparent hover:border-chrome-border"
+                title="Align Bottom"
+              >
+                <AlignEndVertical size={13} />
+              </button>
+              <div className="h-3 w-px bg-chrome-border mx-0.5" />
+              <button
+                type="button"
+                onClick={() => alignObject(activePageIndex, selectedObjectId, 'fit-width')}
+                className="px-1.5 py-0.5 text-[10px] font-mono hover:bg-paper font-bold border border-transparent hover:border-chrome-border"
+                title="Fit to Page Width"
+              >
+                Fit W
+              </button>
+              <button
+                type="button"
+                onClick={() => alignObject(activePageIndex, selectedObjectId, 'fit-page')}
+                className="px-1.5 py-0.5 text-[10px] font-mono hover:bg-paper font-bold border border-transparent hover:border-chrome-border"
+                title="Fill Page"
+              >
+                Fill
+              </button>
+            </div>
+          )}
+
+          {/* HEIC Conversion Floating Indicator */}
+          {isConvertingHeic && (
+            <div className="absolute top-16 z-40 bg-amber-300 text-black px-4 py-2 border-2 border-black font-mono text-xs font-bold shadow-lg animate-pulse flex items-center gap-2">
+              <span>Converting Apple HEIC/HEIF photo to high-res JPG...</span>
+            </div>
+          )}
+
+          {/* Canvas Guides & Zoom controls */}
           <div className="absolute top-4 right-4 flex items-center gap-1 bg-chrome border border-chrome-border p-1 text-xs z-30">
+            {viewMode === 'page' && (
+              <>
+                <button
+                  type="button"
+                  onClick={() => setShowSafetyMargins((m) => !m)}
+                  className={`px-2 py-0.5 font-mono text-[10px] font-bold border transition-colors ${
+                    showSafetyMargins
+                      ? 'border-spot bg-spot/10 text-spot'
+                      : 'border-transparent text-ink/60 hover:bg-paper'
+                  }`}
+                  title="Toggle Margin Safety Area"
+                >
+                  Margins
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setShowGridDots((g) => !g)}
+                  className={`p-1 border transition-colors ${
+                    showGridDots
+                      ? 'border-spot bg-spot/10 text-spot'
+                      : 'border-transparent text-ink/60 hover:bg-paper'
+                  }`}
+                  title="Toggle Dot Grid Pattern"
+                >
+                  <Grid size={13} />
+                </button>
+                <div className="h-3 w-px bg-chrome-border mx-0.5" />
+              </>
+            )}
+
             <button
               type="button"
               onClick={() => setZoom((z) => Math.max(50, z - 10))}
               className="p-1 hover:bg-paper"
+              title="Zoom Out"
             >
               <ZoomOut size={13} />
             </button>
@@ -561,6 +760,7 @@ export const EditorShell: React.FC = () => {
               type="button"
               onClick={() => setZoom((z) => Math.min(200, z + 10))}
               className="p-1 hover:bg-paper"
+              title="Zoom In"
             >
               <ZoomIn size={13} />
             </button>
@@ -568,27 +768,44 @@ export const EditorShell: React.FC = () => {
               type="button"
               onClick={() => setZoom(100)}
               className="p-1 hover:bg-paper border-l border-chrome-border"
+              title="Reset Zoom (100%)"
             >
               <Maximize2 size={13} />
             </button>
           </div>
 
-          {/* Active Canvas / Sheet Box */}
+          {/* Active Canvas / Flipbook / Sheet Switch */}
           {viewMode === 'page' ? (
             // biome-ignore lint/a11y/noStaticElementInteractions: Sheet click boundary
             // biome-ignore lint/a11y/useKeyWithClickEvents: Sheet click boundary
             <div
               ref={canvasRef}
               onClick={(e) => e.stopPropagation()}
+              onDragOver={handleCanvasDragOver}
+              onDragLeave={handleCanvasDragLeave}
+              onDrop={handleCanvasDrop}
               className="xerox-border transition-all duration-150 flex flex-col justify-between relative overflow-hidden select-none"
               style={{
                 width: `${canvasWidthPx}px`,
                 height: `${canvasHeightPx}px`,
                 backgroundColor: activePage.backgroundColor || '#ffffff',
+                backgroundImage: showGridDots
+                  ? 'radial-gradient(circle, rgba(0,0,0,0.15) 1px, transparent 1px)'
+                  : undefined,
+                backgroundSize: showGridDots ? '14px 14px' : undefined,
               }}
             >
-              {/* Bleed outline */}
-              <div className="absolute inset-2 border border-dashed border-spot/20 pointer-events-none z-10" />
+              {/* Drag over overlay */}
+              {isDraggingOverCanvas && (
+                <div className="absolute inset-0 z-40 bg-spot/20 border-4 border-dashed border-spot flex items-center justify-center font-bold text-xs bg-paper/80 font-mono text-spot">
+                  Drop Image Here (PNG, JPG, HEIC, WebP, SVG)
+                </div>
+              )}
+
+              {/* Bleed & Margin Safety Guides */}
+              {showSafetyMargins && (
+                <div className="absolute inset-2 border border-dashed border-spot/30 pointer-events-none z-10" />
+              )}
 
               {/* Page Overlays live preview */}
               {activePage.pageOverlays?.map((ovl) => (
@@ -674,6 +891,7 @@ export const EditorShell: React.FC = () => {
                             obj.imageFit === 'contain' ? 'object-contain' : 'object-cover'
                           }`}
                           style={{
+                            transform: `${obj.flipX ? 'scaleX(-1)' : ''} ${obj.flipY ? 'scaleY(-1)' : ''}`,
                             clipPath:
                               obj.mask === 'circle'
                                 ? 'circle(50% at 50% 50%)'
@@ -695,6 +913,13 @@ export const EditorShell: React.FC = () => {
                         style={{
                           color: obj.color,
                           fontWeight: obj.bold ? 'bold' : 'normal',
+                          fontStyle: obj.italic ? 'italic' : 'normal',
+                          textDecoration: obj.underline ? 'underline' : 'none',
+                          textAlign: obj.align || 'left',
+                          fontFamily: obj.fontFamily || 'monospace',
+                          backgroundColor: obj.backgroundColor || 'transparent',
+                          lineHeight: obj.lineHeight ? `${obj.lineHeight}` : '1.3',
+                          letterSpacing: obj.letterSpacing ? `${obj.letterSpacing}px` : 'normal',
                           fontSize: `${Math.max(9, (obj.fontSizePt * zoom) / 100)}px`,
                         }}
                       >
@@ -725,6 +950,14 @@ export const EditorShell: React.FC = () => {
                     : ''}
               </div>
             </div>
+          ) : viewMode === 'flipbook' ? (
+            /* Virtual 3D Flipbook Reader */
+            <FlipbookReader
+              onEditPage={(idx) => {
+                setActivePageIndex(idx);
+                setViewMode('page');
+              }}
+            />
           ) : (
             /* Imposed Sheet View Preview */
             <div
@@ -870,9 +1103,93 @@ export const EditorShell: React.FC = () => {
                 </div>
               </div>
 
-              {/* Text specific props */}
+              {/* Object Alignment Tools */}
+              <div className="flex flex-col gap-1.5 p-2 bg-chrome border border-chrome-border">
+                <span className="text-[10px] text-ink/70 font-bold uppercase">
+                  Align Object on Page
+                </span>
+                <div className="grid grid-cols-4 gap-1">
+                  <button
+                    type="button"
+                    onClick={() => alignObject(activePageIndex, selectedObject.id, 'left')}
+                    className="p-1 border border-chrome-border hover:bg-paper flex items-center justify-center gap-1 text-[10px]"
+                    title="Align Left (Margin)"
+                  >
+                    <AlignLeft size={12} />
+                    <span>Left</span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => alignObject(activePageIndex, selectedObject.id, 'center')}
+                    className="p-1 border border-chrome-border hover:bg-paper flex items-center justify-center gap-1 text-[10px]"
+                    title="Center Horizontally"
+                  >
+                    <AlignCenter size={12} />
+                    <span>Center</span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => alignObject(activePageIndex, selectedObject.id, 'right')}
+                    className="p-1 border border-chrome-border hover:bg-paper flex items-center justify-center gap-1 text-[10px]"
+                    title="Align Right"
+                  >
+                    <AlignRight size={12} />
+                    <span>Right</span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => alignObject(activePageIndex, selectedObject.id, 'fit-width')}
+                    className="p-1 border border-chrome-border hover:bg-paper flex items-center justify-center text-[10px] font-bold"
+                    title="Fit to Page Width"
+                  >
+                    Fit W
+                  </button>
+                </div>
+                <div className="grid grid-cols-4 gap-1">
+                  <button
+                    type="button"
+                    onClick={() => alignObject(activePageIndex, selectedObject.id, 'top')}
+                    className="p-1 border border-chrome-border hover:bg-paper flex items-center justify-center gap-1 text-[10px]"
+                    title="Align Top"
+                  >
+                    <AlignStartVertical size={12} />
+                    <span>Top</span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => alignObject(activePageIndex, selectedObject.id, 'middle')}
+                    className="p-1 border border-chrome-border hover:bg-paper flex items-center justify-center gap-1 text-[10px]"
+                    title="Center Vertically"
+                  >
+                    <AlignVerticalSpaceAround size={12} />
+                    <span>Middle</span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => alignObject(activePageIndex, selectedObject.id, 'bottom')}
+                    className="p-1 border border-chrome-border hover:bg-paper flex items-center justify-center gap-1 text-[10px]"
+                    title="Align Bottom"
+                  >
+                    <AlignEndVertical size={12} />
+                    <span>Bottom</span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => alignObject(activePageIndex, selectedObject.id, 'fit-page')}
+                    className="p-1 border border-chrome-border hover:bg-paper flex items-center justify-center text-[10px] font-bold"
+                    title="Fill Entire Page"
+                  >
+                    Fill
+                  </button>
+                </div>
+              </div>
+
+              {/* Text specific props & Rich Typography */}
               {selectedObject.type === 'text' && (
-                <div className="flex flex-col gap-2">
+                <div className="flex flex-col gap-2.5">
+                  <span className="text-[10px] text-ink/70 font-bold uppercase">
+                    Text Typography
+                  </span>
                   <textarea
                     value={selectedObject.text}
                     onChange={(e) =>
@@ -880,41 +1197,175 @@ export const EditorShell: React.FC = () => {
                     }
                     className="w-full p-2 border border-chrome-border bg-paper text-xs text-ink font-mono"
                     rows={3}
+                    placeholder="Type text here..."
                   />
 
+                  {/* Text Alignment */}
+                  <div className="flex flex-col gap-1">
+                    <span className="text-[10px] text-ink/60">Text Alignment</span>
+                    <div className="grid grid-cols-4 gap-1">
+                      {(['left', 'center', 'right', 'justify'] as TextAlign[]).map((al) => (
+                        <button
+                          key={al}
+                          type="button"
+                          onClick={() =>
+                            updateObject(activePageIndex, selectedObject.id, { align: al })
+                          }
+                          className={`p-1.5 border flex items-center justify-center transition-colors ${
+                            (selectedObject.align || 'left') === al
+                              ? 'border-spot bg-spot text-spot-contrast font-bold'
+                              : 'border-chrome-border hover:bg-paper'
+                          }`}
+                          title={`Align ${al}`}
+                        >
+                          {al === 'left' && <AlignLeft size={13} />}
+                          {al === 'center' && <AlignCenter size={13} />}
+                          {al === 'right' && <AlignRight size={13} />}
+                          {al === 'justify' && <AlignJustify size={13} />}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+
+                  {/* Font Family */}
+                  <div className="flex flex-col gap-1">
+                    <span className="text-[10px] text-ink/60">Font Family</span>
+                    <select
+                      value={selectedObject.fontFamily || 'monospace'}
+                      onChange={(e) =>
+                        updateObject(activePageIndex, selectedObject.id, {
+                          fontFamily: e.target.value,
+                        })
+                      }
+                      className="p-1 border border-chrome-border bg-paper text-xs text-ink"
+                    >
+                      <option value="monospace">Typewriter / Monospace</option>
+                      <option value="sans-serif">Clean Sans / Modernist</option>
+                      <option value="serif">Classic Editorial Serif</option>
+                      <option value="'Impact', sans-serif">Riot Poster Headline (Impact)</option>
+                      <option value="'Courier New', monospace">Teleprinter / Courier</option>
+                    </select>
+                  </div>
+
+                  {/* Font Size & Styles */}
                   <div className="grid grid-cols-2 gap-2">
                     <div>
-                      <span className="text-[10px] text-ink/60 block mb-1">Font Size (pt)</span>
+                      <span className="text-[10px] text-ink/60 block mb-1">Size (pt)</span>
                       <input
                         type="number"
                         min={8}
-                        max={72}
+                        max={96}
                         value={selectedObject.fontSizePt}
                         onChange={(e) =>
                           updateObject(activePageIndex, selectedObject.id, {
                             fontSizePt: Number(e.target.value),
                           })
                         }
-                        className="w-full p-1 border border-chrome-border bg-paper text-xs"
+                        className="w-full p-1 border border-chrome-border bg-paper text-xs font-mono"
                       />
                     </div>
                     <div>
-                      <span className="text-[10px] text-ink/60 block mb-1">Style</span>
-                      <button
-                        type="button"
-                        onClick={() =>
-                          updateObject(activePageIndex, selectedObject.id, {
-                            bold: !selectedObject.bold,
-                          })
-                        }
-                        className={`w-full p-1 border font-bold ${
-                          selectedObject.bold
-                            ? 'border-spot bg-spot text-spot-contrast'
-                            : 'border-chrome-border'
-                        }`}
-                      >
-                        Bold
-                      </button>
+                      <span className="text-[10px] text-ink/60 block mb-1">Styles</span>
+                      <div className="flex border border-chrome-border">
+                        <button
+                          type="button"
+                          onClick={() =>
+                            updateObject(activePageIndex, selectedObject.id, {
+                              bold: !selectedObject.bold,
+                            })
+                          }
+                          className={`flex-1 p-1 text-center font-bold ${
+                            selectedObject.bold ? 'bg-spot text-spot-contrast' : 'hover:bg-paper'
+                          }`}
+                          title="Bold"
+                        >
+                          <Bold size={11} className="mx-auto" />
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() =>
+                            updateObject(activePageIndex, selectedObject.id, {
+                              italic: !selectedObject.italic,
+                            })
+                          }
+                          className={`flex-1 p-1 text-center border-l border-chrome-border italic ${
+                            selectedObject.italic ? 'bg-spot text-spot-contrast' : 'hover:bg-paper'
+                          }`}
+                          title="Italic"
+                        >
+                          <Italic size={11} className="mx-auto" />
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() =>
+                            updateObject(activePageIndex, selectedObject.id, {
+                              underline: !selectedObject.underline,
+                            })
+                          }
+                          className={`flex-1 p-1 text-center border-l border-chrome-border underline ${
+                            selectedObject.underline
+                              ? 'bg-spot text-spot-contrast'
+                              : 'hover:bg-paper'
+                          }`}
+                          title="Underline"
+                        >
+                          <Underline size={11} className="mx-auto" />
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Text Color & Highlight Background */}
+                  <div className="grid grid-cols-2 gap-2">
+                    <div>
+                      <span className="text-[10px] text-ink/60 block mb-1">Text Color</span>
+                      <div className="flex items-center gap-1.5">
+                        <input
+                          type="color"
+                          value={selectedObject.color || '#121212'}
+                          onChange={(e) =>
+                            updateObject(activePageIndex, selectedObject.id, {
+                              color: e.target.value,
+                            })
+                          }
+                          className="w-6 h-6 border border-chrome-border p-0 bg-transparent cursor-pointer"
+                        />
+                        <span className="font-mono text-[10px]">
+                          {selectedObject.color || '#121212'}
+                        </span>
+                      </div>
+                    </div>
+
+                    <div>
+                      <span className="text-[10px] text-ink/60 block mb-1">Highlight Box</span>
+                      <div className="flex items-center gap-1">
+                        {[
+                          { label: 'None', color: 'transparent' },
+                          { label: 'Yellow', color: '#fff568' },
+                          { label: 'Black', color: '#111111' },
+                          { label: 'Pink', color: '#ff2d6b' },
+                          { label: 'White', color: '#ffffff' },
+                        ].map((c) => (
+                          <button
+                            key={c.label}
+                            type="button"
+                            onClick={() =>
+                              updateObject(activePageIndex, selectedObject.id, {
+                                backgroundColor: c.color,
+                              })
+                            }
+                            className={`w-4 h-4 border border-black/40 rounded-sm ${
+                              (selectedObject.backgroundColor || 'transparent') === c.color
+                                ? 'ring-2 ring-spot'
+                                : ''
+                            }`}
+                            style={{
+                              backgroundColor: c.color === 'transparent' ? '#eee' : c.color,
+                            }}
+                            title={c.label}
+                          />
+                        ))}
+                      </div>
                     </div>
                   </div>
                 </div>
@@ -923,8 +1374,53 @@ export const EditorShell: React.FC = () => {
               {/* Image specific props */}
               {selectedObject.type === 'image' && (
                 <div className="flex flex-col gap-3">
+                  {/* Flip Controls */}
                   <div className="flex items-center justify-between">
-                    <span className="text-[10px] text-ink/60">Image Fitting</span>
+                    <span className="text-[10px] text-ink/60 font-bold uppercase">
+                      Image Direction
+                    </span>
+                    <div className="flex gap-1">
+                      <button
+                        type="button"
+                        onClick={() =>
+                          updateObject(activePageIndex, selectedObject.id, {
+                            flipX: !selectedObject.flipX,
+                          })
+                        }
+                        className={`px-2 py-1 border text-[10px] flex items-center gap-1 ${
+                          selectedObject.flipX
+                            ? 'border-spot bg-spot text-spot-contrast font-bold'
+                            : 'border-chrome-border hover:bg-paper'
+                        }`}
+                        title="Flip Horizontal"
+                      >
+                        <FlipHorizontal size={12} />
+                        <span>Flip H</span>
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() =>
+                          updateObject(activePageIndex, selectedObject.id, {
+                            flipY: !selectedObject.flipY,
+                          })
+                        }
+                        className={`px-2 py-1 border text-[10px] flex items-center gap-1 ${
+                          selectedObject.flipY
+                            ? 'border-spot bg-spot text-spot-contrast font-bold'
+                            : 'border-chrome-border hover:bg-paper'
+                        }`}
+                        title="Flip Vertical"
+                      >
+                        <FlipVertical size={12} />
+                        <span>Flip V</span>
+                      </button>
+                    </div>
+                  </div>
+
+                  <div className="flex items-center justify-between">
+                    <span className="text-[10px] text-ink/60 font-bold uppercase">
+                      Image Fitting
+                    </span>
                     <div className="flex border border-chrome-border text-[11px]">
                       <button
                         type="button"
@@ -989,24 +1485,26 @@ export const EditorShell: React.FC = () => {
 
                   {/* Mask Shape */}
                   <div className="flex flex-col gap-1">
-                    <span className="text-[10px] text-ink/60">Shape Mask</span>
-                    <div className="grid grid-cols-4 gap-1 text-[10px]">
-                      {(['none', 'circle', 'star', 'stamp'] as ImageMask[]).map((m) => (
-                        <button
-                          type="button"
-                          key={m}
-                          onClick={() =>
-                            updateObject(activePageIndex, selectedObject.id, { mask: m })
-                          }
-                          className={`px-1 py-1 border capitalize ${
-                            (selectedObject.mask ?? 'none') === m
-                              ? 'border-spot bg-spot text-spot-contrast font-bold'
-                              : 'border-chrome-border hover:bg-paper'
-                          }`}
-                        >
-                          {m}
-                        </button>
-                      ))}
+                    <span className="text-[10px] text-ink/60 font-bold uppercase">Shape Mask</span>
+                    <div className="grid grid-cols-5 gap-1 text-[10px]">
+                      {(['none', 'circle', 'star', 'stamp', 'torn-edge'] as ImageMask[]).map(
+                        (m) => (
+                          <button
+                            type="button"
+                            key={m}
+                            onClick={() =>
+                              updateObject(activePageIndex, selectedObject.id, { mask: m })
+                            }
+                            className={`px-1 py-1 border capitalize truncate ${
+                              (selectedObject.mask ?? 'none') === m
+                                ? 'border-spot bg-spot text-spot-contrast font-bold'
+                                : 'border-chrome-border hover:bg-paper'
+                            }`}
+                          >
+                            {m === 'torn-edge' ? 'Torn' : m}
+                          </button>
+                        ),
+                      )}
                     </div>
                   </div>
 
@@ -1126,7 +1624,7 @@ export const EditorShell: React.FC = () => {
         type="file"
         ref={fileInputRef}
         onChange={handleImageFileChange}
-        accept="image/*"
+        accept="image/*,.heic,.heif,.HEIC,.HEIF"
         className="hidden"
       />
 

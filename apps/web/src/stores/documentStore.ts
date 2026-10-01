@@ -35,8 +35,12 @@ export interface ImageObject extends BaseZineObject {
   imageFit: 'cover' | 'contain';
   mask?: ImageMask;
   paperShadow?: boolean;
+  flipX?: boolean;
+  flipY?: boolean;
   filters?: FilterInstance[];
 }
+
+export type TextAlign = 'left' | 'center' | 'right' | 'justify';
 
 export interface TextObject extends BaseZineObject {
   type: 'text';
@@ -44,6 +48,13 @@ export interface TextObject extends BaseZineObject {
   fontSizePt: number;
   color: string;
   bold: boolean;
+  italic?: boolean;
+  underline?: boolean;
+  align?: TextAlign;
+  fontFamily?: string;
+  backgroundColor?: string;
+  lineHeight?: number;
+  letterSpacing?: number;
 }
 
 export interface ShapeObject extends BaseZineObject {
@@ -136,6 +147,17 @@ export interface ZineDocumentState {
   updateObject: (pageIndex: number, id: string, updates: Partial<ZineObject>) => void;
   removeObject: (pageIndex: number, id: string) => void;
   duplicateObject: (pageIndex: number, id: string) => void;
+  alignObject: (
+    pageIndex: number,
+    id: string,
+    alignment: 'left' | 'center' | 'right' | 'top' | 'middle' | 'bottom' | 'fit-width' | 'fit-page',
+  ) => void;
+  nudgeObject: (
+    pageIndex: number,
+    id: string,
+    deltaXPercent: number,
+    deltaYPercent: number,
+  ) => void;
 
   // Layers
   bringForward: (pageIndex: number, id: string) => void;
@@ -468,6 +490,54 @@ export const useDocumentStore = create<ZineDocumentState>((set, get) => ({
     };
 
     get().addObject(pageIndex, cloned);
+  },
+
+  alignObject: (pageIndex, id, alignment) => {
+    const page = get().pages[pageIndex];
+    const obj = page?.objects.find((o) => o.id === id);
+    if (!obj) return;
+    get().pushHistory();
+
+    let updates: Partial<BaseZineObject> = {};
+    switch (alignment) {
+      case 'left':
+        updates = { xPercent: 0.05 };
+        break;
+      case 'center':
+        updates = { xPercent: Math.max(0, (1 - obj.wPercent) / 2) };
+        break;
+      case 'right':
+        updates = { xPercent: Math.max(0, 1 - obj.wPercent - 0.05) };
+        break;
+      case 'top':
+        updates = { yPercent: 0.05 };
+        break;
+      case 'middle':
+        updates = { yPercent: Math.max(0, (1 - obj.hPercent) / 2) };
+        break;
+      case 'bottom':
+        updates = { yPercent: Math.max(0, 1 - obj.hPercent - 0.05) };
+        break;
+      case 'fit-width':
+        updates = { xPercent: 0.05, wPercent: 0.9 };
+        break;
+      case 'fit-page':
+        updates = { xPercent: 0, yPercent: 0, wPercent: 1, hPercent: 1 };
+        break;
+    }
+
+    get().updateObject(pageIndex, id, updates);
+  },
+
+  nudgeObject: (pageIndex, id, deltaXPercent, deltaYPercent) => {
+    const page = get().pages[pageIndex];
+    const obj = page?.objects.find((o) => o.id === id);
+    if (!obj || obj.locked) return;
+
+    const newX = Math.max(-0.2, Math.min(1.0, obj.xPercent + deltaXPercent));
+    const newY = Math.max(-0.2, Math.min(1.0, obj.yPercent + deltaYPercent));
+
+    get().updateObject(pageIndex, id, { xPercent: newX, yPercent: newY });
   },
 
   bringForward: (pageIndex, id) => {

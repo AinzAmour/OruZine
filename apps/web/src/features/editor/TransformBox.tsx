@@ -18,6 +18,8 @@ export const TransformBox: React.FC<TransformBoxProps> = ({
 }) => {
   const { activePageIndex, updateObject } = useDocumentStore();
   const [_isRotating, setIsRotating] = useState(false);
+  const [snappedX, setSnappedX] = useState(false);
+  const [snappedY, setSnappedY] = useState(false);
 
   const boxX = object.xPercent * canvasWidthPx;
   const boxY = object.yPercent * canvasHeightPx;
@@ -41,13 +43,21 @@ export const TransformBox: React.FC<TransformBoxProps> = ({
       let newX = Math.max(0, Math.min(1 - object.wPercent, initialX + deltaX));
       let newY = Math.max(0, Math.min(1 - object.hPercent, initialY + deltaY));
 
-      // Snapping to page center (within 2% threshold)
-      if (Math.abs(newX + object.wPercent / 2 - 0.5) < 0.02) {
+      let isSnapX = false;
+      let isSnapY = false;
+
+      // Snapping to page center (within 2.5% threshold)
+      if (Math.abs(newX + object.wPercent / 2 - 0.5) < 0.025) {
         newX = 0.5 - object.wPercent / 2;
+        isSnapX = true;
       }
-      if (Math.abs(newY + object.hPercent / 2 - 0.5) < 0.02) {
+      if (Math.abs(newY + object.hPercent / 2 - 0.5) < 0.025) {
         newY = 0.5 - object.hPercent / 2;
+        isSnapY = true;
       }
+
+      setSnappedX(isSnapX);
+      setSnappedY(isSnapY);
 
       updateObject(activePageIndex, object.id, {
         xPercent: Number(newX.toFixed(4)),
@@ -56,6 +66,8 @@ export const TransformBox: React.FC<TransformBoxProps> = ({
     };
 
     const onMouseUp = () => {
+      setSnappedX(false);
+      setSnappedY(false);
       window.removeEventListener('mousemove', onMouseMove);
       window.removeEventListener('mouseup', onMouseUp);
     };
@@ -157,68 +169,94 @@ export const TransformBox: React.FC<TransformBoxProps> = ({
   };
 
   return (
-    // biome-ignore lint/a11y/noStaticElementInteractions: Canvas object transform handles require raw pointer/mouse interaction
-    <div
-      onMouseDown={handleDragStart}
-      className={`absolute border-2 border-spot pointer-events-auto select-none ${
-        object.locked ? 'cursor-not-allowed border-dashed opacity-80' : 'cursor-move'
-      }`}
-      style={{
-        left: `${boxX}px`,
-        top: `${boxY}px`,
-        width: `${boxW}px`,
-        height: `${boxH}px`,
-        transform: `rotate(${object.rotation}deg)`,
-        transformOrigin: 'center center',
-      }}
-    >
-      {/* Rotation Indicator Pill */}
-      {object.rotation !== 0 && (
-        <div className="absolute -top-7 left-1/2 -translate-x-1/2 bg-spot text-spot-contrast text-[9px] px-1 py-0.5 rounded font-mono font-bold whitespace-nowrap">
-          {object.rotation}°
+    <>
+      {/* Magnetic Center Vertical Guide Line */}
+      {snappedX && (
+        <div
+          className="absolute top-0 bottom-0 left-1/2 -translate-x-1/2 w-0.5 bg-spot border-l-2 border-dashed border-spot/90 pointer-events-none z-30"
+          style={{ height: `${canvasHeightPx}px` }}
+        >
+          <span className="absolute top-2 left-1 bg-spot text-spot-contrast text-[8px] font-bold px-1 py-0.5 rounded font-mono shadow">
+            CENTER X
+          </span>
         </div>
       )}
 
-      {!object.locked && (
-        <>
-          {/* Top Rotation Handle */}
-          <button
-            type="button"
-            onMouseDown={handleRotateStart}
-            className="absolute -top-6 left-1/2 -translate-x-1/2 w-4 h-4 bg-spot text-spot-contrast flex items-center justify-center rounded-full cursor-grab hover:scale-110 transition-transform shadow p-0 border-none"
-            title="Rotate object"
-            aria-label="Rotate object"
-          >
-            <RotateCw size={10} />
-          </button>
-
-          {/* Corner Resize Handles */}
-          <button
-            type="button"
-            onMouseDown={(e) => handleResizeStart(e, 'nw')}
-            className="absolute -top-1.5 -left-1.5 w-3 h-3 bg-paper border-2 border-spot cursor-nwse-resize p-0"
-            aria-label="Resize northwest"
-          />
-          <button
-            type="button"
-            onMouseDown={(e) => handleResizeStart(e, 'ne')}
-            className="absolute -top-1.5 -right-1.5 w-3 h-3 bg-paper border-2 border-spot cursor-nesw-resize p-0"
-            aria-label="Resize northeast"
-          />
-          <button
-            type="button"
-            onMouseDown={(e) => handleResizeStart(e, 'sw')}
-            className="absolute -bottom-1.5 -left-1.5 w-3 h-3 bg-paper border-2 border-spot cursor-nesw-resize p-0"
-            aria-label="Resize southwest"
-          />
-          <button
-            type="button"
-            onMouseDown={(e) => handleResizeStart(e, 'se')}
-            className="absolute -bottom-1.5 -right-1.5 w-3 h-3 bg-paper border-2 border-spot cursor-nwse-resize p-0"
-            aria-label="Resize southeast"
-          />
-        </>
+      {/* Magnetic Center Horizontal Guide Line */}
+      {snappedY && (
+        <div
+          className="absolute left-0 right-0 top-1/2 -translate-y-1/2 h-0.5 bg-spot border-t-2 border-dashed border-spot/90 pointer-events-none z-30"
+          style={{ width: `${canvasWidthPx}px` }}
+        >
+          <span className="absolute left-2 -top-5 bg-spot text-spot-contrast text-[8px] font-bold px-1 py-0.5 rounded font-mono shadow">
+            CENTER Y
+          </span>
+        </div>
       )}
-    </div>
+
+      {/* biome-ignore lint/a11y/noStaticElementInteractions: Canvas object transform handles require raw pointer/mouse interaction */}
+      <div
+        onMouseDown={handleDragStart}
+        className={`absolute border-2 border-spot pointer-events-auto select-none ${
+          object.locked ? 'cursor-not-allowed border-dashed opacity-80' : 'cursor-move'
+        }`}
+        style={{
+          left: `${boxX}px`,
+          top: `${boxY}px`,
+          width: `${boxW}px`,
+          height: `${boxH}px`,
+          transform: `rotate(${object.rotation}deg)`,
+          transformOrigin: 'center center',
+        }}
+      >
+        {/* Rotation Indicator Pill */}
+        {object.rotation !== 0 && (
+          <div className="absolute -top-7 left-1/2 -translate-x-1/2 bg-spot text-spot-contrast text-[9px] px-1 py-0.5 rounded font-mono font-bold whitespace-nowrap">
+            {object.rotation}°
+          </div>
+        )}
+
+        {!object.locked && (
+          <>
+            {/* Top Rotation Handle */}
+            <button
+              type="button"
+              onMouseDown={handleRotateStart}
+              className="absolute -top-6 left-1/2 -translate-x-1/2 w-4 h-4 bg-spot text-spot-contrast flex items-center justify-center rounded-full cursor-grab hover:scale-110 transition-transform shadow p-0 border-none"
+              title="Rotate object"
+              aria-label="Rotate object"
+            >
+              <RotateCw size={10} />
+            </button>
+
+            {/* Corner Resize Handles */}
+            <button
+              type="button"
+              onMouseDown={(e) => handleResizeStart(e, 'nw')}
+              className="absolute -top-1.5 -left-1.5 w-3 h-3 bg-paper border-2 border-spot cursor-nwse-resize p-0"
+              aria-label="Resize northwest"
+            />
+            <button
+              type="button"
+              onMouseDown={(e) => handleResizeStart(e, 'ne')}
+              className="absolute -top-1.5 -right-1.5 w-3 h-3 bg-paper border-2 border-spot cursor-nesw-resize p-0"
+              aria-label="Resize northeast"
+            />
+            <button
+              type="button"
+              onMouseDown={(e) => handleResizeStart(e, 'sw')}
+              className="absolute -bottom-1.5 -left-1.5 w-3 h-3 bg-paper border-2 border-spot cursor-nesw-resize p-0"
+              aria-label="Resize southwest"
+            />
+            <button
+              type="button"
+              onMouseDown={(e) => handleResizeStart(e, 'se')}
+              className="absolute -bottom-1.5 -right-1.5 w-3 h-3 bg-paper border-2 border-spot cursor-nwse-resize p-0"
+              aria-label="Resize southeast"
+            />
+          </>
+        )}
+      </div>
+    </>
   );
 };

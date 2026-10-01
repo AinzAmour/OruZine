@@ -29,6 +29,8 @@ export interface ExportObject {
   opacity: number;
   imageElement?: HTMLImageElement | ImageBitmap | null;
   imageFit?: 'cover' | 'contain';
+  flipX?: boolean;
+  flipY?: boolean;
   mask?: string;
   paperShadow?: boolean;
   filters?: FilterInstance[];
@@ -36,6 +38,12 @@ export interface ExportObject {
   fontSizePt?: number;
   color?: string;
   bold?: boolean;
+  italic?: boolean;
+  underline?: boolean;
+  align?: 'left' | 'center' | 'right' | 'justify';
+  fontFamily?: string;
+  lineHeight?: number;
+  letterSpacing?: number;
   shapeType?: 'rect' | 'circle' | 'line';
   fillColor?: string;
   strokeColor?: string;
@@ -172,6 +180,11 @@ export async function renderImposedSheetToCanvas(
           }
         } else if (obj.type === 'image' && obj.imageElement) {
           ctx.save();
+          // Support Flip X / Flip Y
+          if (obj.flipX || obj.flipY) {
+            ctx.scale(obj.flipX ? -1 : 1, obj.flipY ? -1 : 1);
+          }
+
           // Mask clipping
           if (obj.mask === 'circle') {
             ctx.beginPath();
@@ -241,14 +254,19 @@ export async function renderImposedSheetToCanvas(
           }
         } else if (obj.type === 'text' && obj.text) {
           const scaledFontSize = ((obj.fontSizePt || 12) / 72) * dpi;
-          ctx.font = `${obj.bold ? 'bold ' : ''}${scaledFontSize}px "Courier New", monospace`;
+          const fontStyle = `${obj.italic ? 'italic ' : ''}${obj.bold ? 'bold ' : ''}`;
+          ctx.font = `${fontStyle}${scaledFontSize}px ${obj.fontFamily || '"Courier New", monospace'}`;
           ctx.fillStyle = opts.grayscale ? '#000000' : obj.color || '#121212';
           ctx.textBaseline = 'top';
 
+          const align = obj.align || 'left';
+          ctx.textAlign = align === 'center' ? 'center' : align === 'right' ? 'right' : 'left';
+          const textX = align === 'center' ? 0 : align === 'right' ? objW / 2 : -objW / 2;
+
           const lines = obj.text.split('\n');
-          const lineHeight = scaledFontSize * 1.25;
+          const lineHeight = scaledFontSize * (obj.lineHeight || 1.25);
           lines.forEach((line, i) => {
-            ctx.fillText(line, -objW / 2, -objH / 2 + i * lineHeight);
+            ctx.fillText(line, textX, -objH / 2 + i * lineHeight);
           });
         }
 

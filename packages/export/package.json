@@ -10,7 +10,8 @@
   "dependencies": {
     "@cantoo/pdf-lib": "^2.11.1",
     "@oruzine/formats": "workspace:*",
-    "@oruzine/imposition": "workspace:*"
+    "@oruzine/imposition": "workspace:*",
+    "@oruzine/filters": "workspace:*"
   },
   "devDependencies": {
     "typescript": "^5.8.2"

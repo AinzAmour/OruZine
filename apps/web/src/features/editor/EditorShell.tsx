@@ -13,6 +13,7 @@ import {
   RotateCcw,
   Scissors,
   Settings,
+  Sliders,
   Sparkles,
   Square,
   Trash2,
@@ -34,6 +35,7 @@ import { CollagePaletteModal } from '../collage/CollagePaletteModal';
 import { ImageCutoutModal } from '../collage/ImageCutoutModal';
 import { StickerView } from '../collage/StickerView';
 import { ExportModal } from '../export/ExportModal';
+import { FilterStackModal, type FilterStackTarget } from '../filters/FilterStackModal';
 import { FormatSetupModal } from '../format/FormatSetupModal';
 import { FoldGuideModal } from '../preview/FoldGuideModal';
 import { LayersPanel } from './LayersPanel';
@@ -77,6 +79,7 @@ export const EditorShell: React.FC = () => {
   const [isExportOpen, setIsExportOpen] = useState<boolean>(false);
   const [isCollagePaletteOpen, setIsCollagePaletteOpen] = useState<boolean>(false);
   const [isCutoutModalOpen, setIsCutoutModalOpen] = useState<boolean>(false);
+  const [filterModalTarget, setFilterModalTarget] = useState<FilterStackTarget | null>(null);
 
   const activeFormat = FORMAT_REGISTRY[formatId] || MINI_8_FORMAT;
   const plan = impose(activeFormat, pages.length, {
@@ -835,6 +838,28 @@ export const EditorShell: React.FC = () => {
                     </div>
                   </div>
 
+                  {/* Print Filters & Shaders */}
+                  <button
+                    type="button"
+                    onClick={() =>
+                      setFilterModalTarget({
+                        type: 'object',
+                        objectId: selectedObject.id,
+                        pageIndex: activePageIndex,
+                        title: 'Selected Image',
+                      })
+                    }
+                    className="w-full flex items-center justify-center gap-2 py-1.5 px-3 border border-chrome-border hover:border-spot bg-paper text-xs font-bold transition-colors"
+                  >
+                    <Sliders size={13} className="text-spot" />
+                    <span>
+                      Print Filters & Shaders{' '}
+                      {selectedObject.filters && selectedObject.filters.length > 0
+                        ? `(${selectedObject.filters.filter((f) => f.enabled).length})`
+                        : ''}
+                    </span>
+                  </button>
+
                   {/* AI Cutout & Eraser Button */}
                   <button
                     type="button"
@@ -944,8 +969,36 @@ export const EditorShell: React.FC = () => {
               </div>
             </div>
           ) : (
-            <div className="text-xs text-ink/50 text-center p-4 border border-dashed border-chrome-border">
-              Click an object on the canvas or pick a layer to inspect properties.
+            <div className="flex flex-col gap-3">
+              <div className="text-xs text-ink/50 text-center p-4 border border-dashed border-chrome-border">
+                Click an object on the canvas or pick a layer to inspect properties.
+              </div>
+
+              {/* Page-wide print filters */}
+              <div className="border-t border-chrome-border pt-3 flex flex-col gap-2">
+                <span className="text-[10px] text-ink/60 uppercase font-bold">
+                  Page Print Treatment
+                </span>
+                <button
+                  type="button"
+                  onClick={() =>
+                    setFilterModalTarget({
+                      type: 'page',
+                      pageIndex: activePageIndex,
+                      title: `Page ${activePage.pageNumber}`,
+                    })
+                  }
+                  className="w-full flex items-center justify-center gap-2 py-1.5 px-3 border border-chrome-border hover:border-spot bg-paper text-xs font-bold transition-colors"
+                >
+                  <Sliders size={13} className="text-spot" />
+                  <span>
+                    Page Filter Stack{' '}
+                    {activePage.pageFilters && activePage.pageFilters.length > 0
+                      ? `(${activePage.pageFilters.filter((f) => f.enabled).length})`
+                      : ''}
+                  </span>
+                </button>
+              </div>
             </div>
           )}
         </aside>
@@ -1029,6 +1082,11 @@ export const EditorShell: React.FC = () => {
         isOpen={isCutoutModalOpen}
         onClose={() => setIsCutoutModalOpen(false)}
         object={selectedObject?.type === 'image' ? selectedObject : null}
+      />
+      <FilterStackModal
+        isOpen={!!filterModalTarget}
+        onClose={() => setFilterModalTarget(null)}
+        target={filterModalTarget}
       />
     </div>
   );

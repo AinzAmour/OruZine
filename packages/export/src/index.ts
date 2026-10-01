@@ -1,4 +1,5 @@
 import { PDFDocument } from '@cantoo/pdf-lib';
+import { applyFilterStackToCanvasSync, type FilterInstance } from '@oruzine/filters';
 import type { FormatDefinition } from '@oruzine/formats';
 import type { PlacementPlan } from '@oruzine/imposition';
 
@@ -25,6 +26,7 @@ export interface ExportObject {
   imageFit?: 'cover' | 'contain';
   mask?: string;
   paperShadow?: boolean;
+  filters?: FilterInstance[];
   text?: string;
   fontSizePt?: number;
   color?: string;
@@ -40,6 +42,7 @@ export interface ExportPageData {
   pageNumber: number;
   backgroundColor?: string;
   objects?: ExportObject[];
+  pageFilters?: FilterInstance[];
   // Backward compatibility
   imageElement?: HTMLImageElement | ImageBitmap | null;
   imageFit?: 'cover' | 'contain';
@@ -191,7 +194,21 @@ export async function renderImposedSheetToCanvas(
             }
           }
 
-          ctx.drawImage(img, -drawW / 2, -drawH / 2, drawW, drawH);
+          if (obj.filters && obj.filters.length > 0 && obj.filters.some((f) => f.enabled)) {
+            const tempCanvas = document.createElement('canvas');
+            tempCanvas.width = Math.max(1, Math.round(drawW));
+            tempCanvas.height = Math.max(1, Math.round(drawH));
+            const tempCtx = tempCanvas.getContext('2d');
+            if (tempCtx) {
+              tempCtx.drawImage(img, 0, 0, tempCanvas.width, tempCanvas.height);
+              applyFilterStackToCanvasSync(tempCanvas, obj.filters);
+              ctx.drawImage(tempCanvas, -drawW / 2, -drawH / 2, drawW, drawH);
+            } else {
+              ctx.drawImage(img, -drawW / 2, -drawH / 2, drawW, drawH);
+            }
+          } else {
+            ctx.drawImage(img, -drawW / 2, -drawH / 2, drawW, drawH);
+          }
           ctx.restore();
         } else if (obj.type === 'sticker') {
           const st = obj.stickerType;

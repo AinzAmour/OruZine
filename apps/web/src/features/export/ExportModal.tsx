@@ -71,6 +71,7 @@ export const ExportModal: React.FC<ExportModalProps> = ({ isOpen, onClose }) => 
                   imageFit: obj.imageFit,
                   mask: obj.mask,
                   paperShadow: obj.paperShadow,
+                  filters: obj.filters,
                 };
               }
               if (obj.type === 'text') {
@@ -125,6 +126,7 @@ export const ExportModal: React.FC<ExportModalProps> = ({ isOpen, onClose }) => 
             pageNumber: p.pageNumber,
             backgroundColor: p.backgroundColor || '#ffffff',
             objects: exportObjects,
+            pageFilters: p.pageFilters,
           };
         }),
       );

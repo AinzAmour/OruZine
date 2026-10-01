@@ -1,3 +1,4 @@
+import { createFilterInstance, type FilterInstance, type FilterType } from '@oruzine/filters';
 import type { Margins, PaperSize } from '@oruzine/formats';
 import { create } from 'zustand';
 import { db } from './db';
@@ -25,6 +26,7 @@ export interface ImageObject extends BaseZineObject {
   imageFit: 'cover' | 'contain';
   mask?: ImageMask;
   paperShadow?: boolean;
+  filters?: FilterInstance[];
 }
 
 export interface TextObject extends BaseZineObject {
@@ -66,6 +68,7 @@ export interface DocumentPage {
   pageNumber: number; // 1-indexed in reader order
   backgroundColor: string;
   objects: ZineObject[];
+  pageFilters?: FilterInstance[];
 }
 
 export interface DocumentSnapshot {
@@ -132,6 +135,18 @@ export interface ZineDocumentState {
 
   // Page reordering
   reorderPages: (fromIndex: number, toIndex: number) => void;
+
+  // Filter Stacks
+  addFilter: (pageIndex: number, objectId: string | null, type: FilterType) => void;
+  updateFilter: (
+    pageIndex: number,
+    objectId: string | null,
+    filterId: string,
+    params: Record<string, unknown>,
+  ) => void;
+  removeFilter: (pageIndex: number, objectId: string | null, filterId: string) => void;
+  toggleFilter: (pageIndex: number, objectId: string | null, filterId: string) => void;
+  applyFiltersToAllPages: (filters: FilterInstance[]) => void;
 
   // Persistence
   resetDocument: () => void;
@@ -545,6 +560,135 @@ export const useDocumentStore = create<ZineDocumentState>((set, get) => ({
 
       return { pages: renumbered, activePageIndex: toIndex, selectedObjectId: null };
     });
+    get().triggerAutosave();
+  },
+
+  addFilter: (pageIndex, objectId, type) => {
+    get().pushHistory();
+    const newFilter = createFilterInstance(type);
+    set((state) => {
+      const nextPages = [...state.pages];
+      const page = { ...nextPages[pageIndex] };
+      if (!page) return state;
+
+      if (objectId) {
+        page.objects = page.objects.map((obj) => {
+          if (obj.id === objectId && obj.type === 'image') {
+            return {
+              ...obj,
+              filters: [...(obj.filters || []), newFilter],
+            };
+          }
+          return obj;
+        });
+      } else {
+        page.pageFilters = [...(page.pageFilters || []), newFilter];
+      }
+
+      nextPages[pageIndex] = page;
+      return { pages: nextPages };
+    });
+    get().triggerAutosave();
+  },
+
+  updateFilter: (pageIndex, objectId, filterId, params) => {
+    set((state) => {
+      const nextPages = [...state.pages];
+      const page = { ...nextPages[pageIndex] };
+      if (!page) return state;
+
+      if (objectId) {
+        page.objects = page.objects.map((obj) => {
+          if (obj.id === objectId && obj.type === 'image' && obj.filters) {
+            return {
+              ...obj,
+              filters: obj.filters.map((f) =>
+                f.id === filterId ? { ...f, params: { ...f.params, ...params } } : f,
+              ),
+            };
+          }
+          return obj;
+        });
+      } else if (page.pageFilters) {
+        page.pageFilters = page.pageFilters.map((f) =>
+          f.id === filterId ? { ...f, params: { ...f.params, ...params } } : f,
+        );
+      }
+
+      nextPages[pageIndex] = page;
+      return { pages: nextPages };
+    });
+    get().triggerAutosave();
+  },
+
+  removeFilter: (pageIndex, objectId, filterId) => {
+    get().pushHistory();
+    set((state) => {
+      const nextPages = [...state.pages];
+      const page = { ...nextPages[pageIndex] };
+      if (!page) return state;
+
+      if (objectId) {
+        page.objects = page.objects.map((obj) => {
+          if (obj.id === objectId && obj.type === 'image' && obj.filters) {
+            return {
+              ...obj,
+              filters: obj.filters.filter((f) => f.id !== filterId),
+            };
+          }
+          return obj;
+        });
+      } else if (page.pageFilters) {
+        page.pageFilters = page.pageFilters.filter((f) => f.id !== filterId);
+      }
+
+      nextPages[pageIndex] = page;
+      return { pages: nextPages };
+    });
+    get().triggerAutosave();
+  },
+
+  toggleFilter: (pageIndex, objectId, filterId) => {
+    set((state) => {
+      const nextPages = [...state.pages];
+      const page = { ...nextPages[pageIndex] };
+      if (!page) return state;
+
+      if (objectId) {
+        page.objects = page.objects.map((obj) => {
+          if (obj.id === objectId && obj.type === 'image' && obj.filters) {
+            return {
+              ...obj,
+              filters: obj.filters.map((f) =>
+                f.id === filterId ? { ...f, enabled: !f.enabled } : f,
+              ),
+            };
+          }
+          return obj;
+        });
+      } else if (page.pageFilters) {
+        page.pageFilters = page.pageFilters.map((f) =>
+          f.id === filterId ? { ...f, enabled: !f.enabled } : f,
+        );
+      }
+
+      nextPages[pageIndex] = page;
+      return { pages: nextPages };
+    });
+    get().triggerAutosave();
+  },
+
+  applyFiltersToAllPages: (filters) => {
+    get().pushHistory();
+    set((state) => ({
+      pages: state.pages.map((p) => ({
+        ...p,
+        pageFilters: filters.map((f) => ({
+          ...f,
+          id: `filt-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
+        })),
+      })),
+    }));
     get().triggerAutosave();
   },
 

@@ -26,6 +26,9 @@ importers:
       '@oruzine/export':
         specifier: workspace:*
         version: link:../../packages/export
+      '@oruzine/filters':
+        specifier: workspace:*
+        version: link:../../packages/filters
       '@oruzine/formats':
         specifier: workspace:*
         version: link:../../packages/formats
@@ -96,6 +99,9 @@ importers:
       '@cantoo/pdf-lib':
         specifier: ^2.11.1
         version: 2.11.1(html-entities@2.6.0)
+      '@oruzine/filters':
+        specifier: workspace:*
+        version: link:../filters
       '@oruzine/formats':
         specifier: workspace:*
         version: link:../formats
@@ -112,6 +118,9 @@ importers:
       typescript:
         specifier: ^5.8.2
         version: 5.9.3
+      vitest:
+        specifier: ^3.0.0
+        version: 3.2.7(jiti@2.7.0)(lightningcss@1.33.0)(terser@5.51.2)
 
   packages/formats:
     devDependencies:

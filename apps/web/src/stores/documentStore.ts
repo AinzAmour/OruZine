@@ -1,4 +1,12 @@
-import { createFilterInstance, type FilterInstance, type FilterType } from '@oruzine/filters';
+import {
+  createFilterInstance,
+  createOverlayInstance,
+  type FilterInstance,
+  type FilterType,
+  getLookById,
+  type OverlayInstance,
+  type OverlayType,
+} from '@oruzine/filters';
 import type { Margins, PaperSize } from '@oruzine/formats';
 import { create } from 'zustand';
 import { db } from './db';
@@ -69,6 +77,7 @@ export interface DocumentPage {
   backgroundColor: string;
   objects: ZineObject[];
   pageFilters?: FilterInstance[];
+  pageOverlays?: OverlayInstance[];
 }
 
 export interface DocumentSnapshot {
@@ -80,6 +89,7 @@ export interface DocumentSnapshot {
   creepMm?: number;
   rtl: boolean;
   pages: DocumentPage[];
+  activeLookId?: string | null;
 }
 
 export interface ZineDocumentState {
@@ -94,6 +104,7 @@ export interface ZineDocumentState {
   pages: DocumentPage[];
   activePageIndex: number; // 0-indexed
   selectedObjectId: string | null;
+  activeLookId: string | null;
   isAutosaved: boolean;
   lastSavedAt: string | null;
 
@@ -148,6 +159,14 @@ export interface ZineDocumentState {
   toggleFilter: (pageIndex: number, objectId: string | null, filterId: string) => void;
   applyFiltersToAllPages: (filters: FilterInstance[]) => void;
 
+  // Signature Looks & Overlays
+  applyLook: (lookId: string) => void;
+  clearLook: () => void;
+  addOverlay: (pageIndex: number, type: OverlayType) => void;
+  updateOverlay: (pageIndex: number, overlayId: string, updates: Partial<OverlayInstance>) => void;
+  removeOverlay: (pageIndex: number, overlayId: string) => void;
+  applyOverlaysToAllPages: (overlays: OverlayInstance[]) => void;
+
   // Persistence
   resetDocument: () => void;
   loadDocument: (doc: Partial<ZineDocumentState>) => void;
@@ -201,6 +220,7 @@ export const useDocumentStore = create<ZineDocumentState>((set, get) => ({
   pages: createDefaultPages(8),
   activePageIndex: 0,
   selectedObjectId: null,
+  activeLookId: null,
   isAutosaved: true,
   lastSavedAt: null,
 
@@ -218,6 +238,7 @@ export const useDocumentStore = create<ZineDocumentState>((set, get) => ({
       creepMm: state.creepMm,
       rtl: state.rtl,
       pages: JSON.parse(JSON.stringify(state.pages)),
+      activeLookId: state.activeLookId,
     };
 
     set((s) => ({
@@ -686,6 +707,113 @@ export const useDocumentStore = create<ZineDocumentState>((set, get) => ({
         pageFilters: filters.map((f) => ({
           ...f,
           id: `filt-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
+        })),
+      })),
+    }));
+    get().triggerAutosave();
+  },
+
+  applyLook: (lookId) => {
+    const look = getLookById(lookId);
+    if (!look) return;
+    get().pushHistory();
+
+    set((state) => ({
+      activeLookId: lookId,
+      pages: state.pages.map((p) => {
+        const newFilters = look.filters.map((f) => ({
+          ...f,
+          id: `filt-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
+        }));
+        const newOverlays = look.overlays.map((o) => ({
+          ...o,
+          id: `ovl-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
+        }));
+
+        const updatedObjects = p.objects.map((obj) => {
+          if (obj.type === 'text') {
+            return { ...obj, color: look.textColor };
+          }
+          return obj;
+        });
+
+        return {
+          ...p,
+          backgroundColor: look.paperColor,
+          pageFilters: newFilters,
+          pageOverlays: newOverlays,
+          objects: updatedObjects,
+        };
+      }),
+    }));
+    get().triggerAutosave();
+  },
+
+  clearLook: () => {
+    get().pushHistory();
+    set((state) => ({
+      activeLookId: null,
+      pages: state.pages.map((p) => ({
+        ...p,
+        pageFilters: [],
+        pageOverlays: [],
+      })),
+    }));
+    get().triggerAutosave();
+  },
+
+  addOverlay: (pageIndex, type) => {
+    get().pushHistory();
+    const newOverlay = createOverlayInstance(type);
+    set((state) => {
+      const nextPages = [...state.pages];
+      const page = { ...nextPages[pageIndex] };
+      if (!page) return state;
+
+      page.pageOverlays = [...(page.pageOverlays || []), newOverlay];
+      nextPages[pageIndex] = page;
+      return { pages: nextPages };
+    });
+    get().triggerAutosave();
+  },
+
+  updateOverlay: (pageIndex, overlayId, updates) => {
+    set((state) => {
+      const nextPages = [...state.pages];
+      const page = { ...nextPages[pageIndex] };
+      if (!page?.pageOverlays) return state;
+
+      page.pageOverlays = page.pageOverlays.map((o) =>
+        o.id === overlayId ? { ...o, ...updates } : o,
+      );
+      nextPages[pageIndex] = page;
+      return { pages: nextPages };
+    });
+    get().triggerAutosave();
+  },
+
+  removeOverlay: (pageIndex, overlayId) => {
+    get().pushHistory();
+    set((state) => {
+      const nextPages = [...state.pages];
+      const page = { ...nextPages[pageIndex] };
+      if (!page?.pageOverlays) return state;
+
+      page.pageOverlays = page.pageOverlays.filter((o) => o.id !== overlayId);
+      nextPages[pageIndex] = page;
+      return { pages: nextPages };
+    });
+    get().triggerAutosave();
+  },
+
+  applyOverlaysToAllPages: (overlays) => {
+    get().pushHistory();
+    set((state) => ({
+      pages: state.pages.map((p) => ({
+        ...p,
+        pageOverlays: overlays.map((o) => ({
+          ...o,
+          id: `ovl-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
         })),
       })),
     }));

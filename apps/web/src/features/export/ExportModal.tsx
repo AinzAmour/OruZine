@@ -127,6 +127,7 @@ export const ExportModal: React.FC<ExportModalProps> = ({ isOpen, onClose }) => 
             backgroundColor: p.backgroundColor || '#ffffff',
             objects: exportObjects,
             pageFilters: p.pageFilters,
+            pageOverlays: p.pageOverlays,
           };
         }),
       );

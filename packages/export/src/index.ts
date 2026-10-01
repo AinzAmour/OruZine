@@ -1,5 +1,10 @@
 import { PDFDocument } from '@cantoo/pdf-lib';
-import { applyFilterStackToCanvasSync, type FilterInstance } from '@oruzine/filters';
+import {
+  applyFilterStackToCanvasSync,
+  drawOverlay,
+  type FilterInstance,
+  type OverlayInstance,
+} from '@oruzine/filters';
 import type { FormatDefinition } from '@oruzine/formats';
 import type { PlacementPlan } from '@oruzine/imposition';
 
@@ -43,6 +48,7 @@ export interface ExportPageData {
   backgroundColor?: string;
   objects?: ExportObject[];
   pageFilters?: FilterInstance[];
+  pageOverlays?: OverlayInstance[];
   // Backward compatibility
   imageElement?: HTMLImageElement | ImageBitmap | null;
   imageFit?: 'cover' | 'contain';
@@ -291,6 +297,16 @@ export async function renderImposedSheetToCanvas(
           });
         }
       }
+    }
+
+    // Draw procedural texture overlays on the cell
+    if (pageData?.pageOverlays && pageData.pageOverlays.length > 0) {
+      ctx.save();
+      ctx.translate(-cellW / 2, -cellH / 2);
+      for (const ovl of pageData.pageOverlays) {
+        drawOverlay(ctx, cellW, cellH, ovl);
+      }
+      ctx.restore();
     }
 
     ctx.restore();

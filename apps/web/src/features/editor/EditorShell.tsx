@@ -1,3 +1,4 @@
+import { SIGNATURE_LOOKS } from '@oruzine/filters';
 import { FORMAT_REGISTRY, MINI_8_FORMAT } from '@oruzine/formats';
 import { impose } from '@oruzine/imposition';
 import {
@@ -37,6 +38,7 @@ import { StickerView } from '../collage/StickerView';
 import { ExportModal } from '../export/ExportModal';
 import { FilterStackModal, type FilterStackTarget } from '../filters/FilterStackModal';
 import { FormatSetupModal } from '../format/FormatSetupModal';
+import { LooksModal } from '../looks/LooksModal';
 import { FoldGuideModal } from '../preview/FoldGuideModal';
 import { LayersPanel } from './LayersPanel';
 import { TransformBox } from './TransformBox';
@@ -69,12 +71,14 @@ export const EditorShell: React.FC = () => {
     redo,
     canUndo,
     canRedo,
+    activeLookId,
   } = useDocumentStore();
 
   const [viewMode, setViewMode] = useState<'page' | 'sheet'>('page');
   const [previewSheetIndex, setPreviewSheetIndex] = useState<number>(0);
   const [zoom, setZoom] = useState<number>(100);
   const [isSetupOpen, setIsSetupOpen] = useState<boolean>(false);
+  const [isLooksModalOpen, setIsLooksModalOpen] = useState<boolean>(false);
   const [isFoldGuideOpen, setIsFoldGuideOpen] = useState<boolean>(false);
   const [isExportOpen, setIsExportOpen] = useState<boolean>(false);
   const [isCollagePaletteOpen, setIsCollagePaletteOpen] = useState<boolean>(false);
@@ -334,6 +338,25 @@ export const EditorShell: React.FC = () => {
             </button>
           </div>
 
+          {/* Signature Looks */}
+          <button
+            type="button"
+            onClick={() => setIsLooksModalOpen(true)}
+            className={`flex items-center gap-1.5 px-2.5 py-1 border text-xs transition-colors ${
+              activeLookId
+                ? 'border-spot bg-spot text-spot-contrast font-bold'
+                : 'border-chrome-border hover:bg-paper'
+            }`}
+            title="Apply authentic 1-click print-culture Look"
+          >
+            <Sparkles size={13} className={activeLookId ? 'text-spot-contrast' : 'text-spot'} />
+            <span>
+              {activeLookId
+                ? `${SIGNATURE_LOOKS.find((l) => l.id === activeLookId)?.name || 'Look'}`
+                : 'Looks'}
+            </span>
+          </button>
+
           {/* How to fold guide */}
           <button
             type="button"
@@ -485,14 +508,36 @@ export const EditorShell: React.FC = () => {
             <div
               ref={canvasRef}
               onClick={(e) => e.stopPropagation()}
-              className="bg-paper xerox-border transition-all duration-150 flex flex-col justify-between relative overflow-hidden select-none"
+              className="xerox-border transition-all duration-150 flex flex-col justify-between relative overflow-hidden select-none"
               style={{
                 width: `${canvasWidthPx}px`,
                 height: `${canvasHeightPx}px`,
+                backgroundColor: activePage.backgroundColor || '#ffffff',
               }}
             >
               {/* Bleed outline */}
               <div className="absolute inset-2 border border-dashed border-spot/20 pointer-events-none z-10" />
+
+              {/* Page Overlays live preview */}
+              {activePage.pageOverlays?.map((ovl) => (
+                <div
+                  key={ovl.id}
+                  className="absolute inset-0 pointer-events-none z-15"
+                  style={{
+                    opacity: ovl.opacity * 0.7,
+                    mixBlendMode: ovl.blendMode,
+                    backgroundImage:
+                      ovl.type === 'toner-dust'
+                        ? 'radial-gradient(circle, #000 1px, transparent 1px)'
+                        : ovl.type === 'copier-streaks'
+                          ? 'repeating-linear-gradient(90deg, transparent 0, transparent 40px, rgba(0,0,0,0.15) 41px, transparent 42px)'
+                          : ovl.type === 'fold-creases'
+                            ? 'linear-gradient(to bottom, transparent 49%, rgba(0,0,0,0.3) 50%, transparent 51%)'
+                            : undefined,
+                    backgroundSize: ovl.type === 'toner-dust' ? '12px 12px' : undefined,
+                  }}
+                />
+              ))}
 
               {/* Render all page objects */}
               {activePage.objects.map((obj) => {
@@ -1088,6 +1133,7 @@ export const EditorShell: React.FC = () => {
         onClose={() => setFilterModalTarget(null)}
         target={filterModalTarget}
       />
+      <LooksModal isOpen={isLooksModalOpen} onClose={() => setIsLooksModalOpen(false)} />
     </div>
   );
 };

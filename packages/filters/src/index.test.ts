@@ -1,11 +1,15 @@
 import { describe, expect, it } from 'vitest';
 import {
   AVAILABLE_FILTERS,
+  AVAILABLE_OVERLAYS,
   applyDither,
   applyDuotone,
   applyXerox,
   createFilterInstance,
+  createOverlayInstance,
   FILTER_REGISTRY,
+  getLookById,
+  SIGNATURE_LOOKS,
 } from './index';
 
 describe('Filter Registry and Filter Instances', () => {
@@ -99,6 +103,39 @@ describe('Pixel Processing Algorithms (ImageData)', () => {
       expect(result.data[i + 1]).toBe(0); // G channel must stay 0
       expect(result.data[i]).toBeGreaterThanOrEqual(0);
       expect(result.data[i + 2]).toBeGreaterThanOrEqual(0);
+    }
+  });
+});
+
+describe('Texture Overlays & Signature Looks', () => {
+  it('registers all 5 authentic procedural texture overlays', () => {
+    expect(AVAILABLE_OVERLAYS).toHaveLength(5);
+    expect(AVAILABLE_OVERLAYS).toContain('toner-dust');
+    expect(AVAILABLE_OVERLAYS).toContain('copier-streaks');
+    expect(AVAILABLE_OVERLAYS).toContain('fold-creases');
+    expect(AVAILABLE_OVERLAYS).toContain('newsprint-grain');
+    expect(AVAILABLE_OVERLAYS).toContain('light-leak');
+  });
+
+  it('creates valid overlay instances with defaults', () => {
+    const ovl = createOverlayInstance('toner-dust');
+    expect(ovl.type).toBe('toner-dust');
+    expect(ovl.opacity).toBeGreaterThan(0);
+    expect(ovl.blendMode).toBe('multiply');
+    expect(ovl.id).toMatch(/^ovl-/);
+  });
+
+  it('provides all 5 signature Looks presets', () => {
+    expect(SIGNATURE_LOOKS).toHaveLength(5);
+    const ids = SIGNATURE_LOOKS.map((l) => l.id);
+    expect(ids).toEqual(['xerox-punk', 'newsprint-noir', 'vhs-basement', 'riso-pop', 'neon-night']);
+
+    for (const look of SIGNATURE_LOOKS) {
+      expect(look.name).toBeTruthy();
+      expect(look.tagline).toBeTruthy();
+      expect(look.filters.length).toBeGreaterThan(0);
+      expect(look.overlays.length).toBeGreaterThan(0);
+      expect(getLookById(look.id)).toBe(look);
     }
   });
 });

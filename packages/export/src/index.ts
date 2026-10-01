@@ -66,9 +66,10 @@ export async function renderImposedSheetToCanvas(
   pages: ExportPageData[],
   plan: PlacementPlan,
   opts: ExportOptions = {},
+  sheetIndex = 0,
 ): Promise<HTMLCanvasElement> {
   const dpi = opts.dpi ?? 300;
-  const sheet = plan.sheets[0];
+  const sheet = plan.sheets[sheetIndex] ?? plan.sheets[0];
 
   const canvasWidth = mmToPixels(sheet.widthMm, dpi);
   const canvasHeight = mmToPixels(sheet.heightMm, dpi);
@@ -268,6 +269,7 @@ export async function renderImposedSheetToCanvas(
 
 /**
  * Generates an imposed, print-ready PDF at true physical scale (100% scale).
+ * For multi-sheet and duplex formats, renders each sheet side in imposition sequence.
  */
 export async function generateImposedPdf(
   format: FormatDefinition,
@@ -275,31 +277,32 @@ export async function generateImposedPdf(
   plan: PlacementPlan,
   opts: ExportOptions = {},
 ): Promise<Uint8Array> {
-  const canvas = await renderImposedSheetToCanvas(format, pages, plan, opts);
-
-  const blob = await new Promise<Blob | null>((resolve) =>
-    canvas.toBlob((b) => resolve(b), 'image/png'),
-  );
-  if (!blob) {
-    throw new Error('Failed to create PNG blob from canvas');
-  }
-
-  const pngBytes = new Uint8Array(await blob.arrayBuffer());
-
   const pdfDoc = await PDFDocument.create();
 
   const pageWidthPt = mmToPoints(plan.paperWidthMm);
   const pageHeightPt = mmToPoints(plan.paperHeightMm);
 
-  const pdfPage = pdfDoc.addPage([pageWidthPt, pageHeightPt]);
-  const embeddedPng = await pdfDoc.embedPng(pngBytes);
+  for (let s = 0; s < plan.sheets.length; s++) {
+    const canvas = await renderImposedSheetToCanvas(format, pages, plan, opts, s);
 
-  pdfPage.drawImage(embeddedPng, {
-    x: 0,
-    y: 0,
-    width: pageWidthPt,
-    height: pageHeightPt,
-  });
+    const blob = await new Promise<Blob | null>((resolve) =>
+      canvas.toBlob((b) => resolve(b), 'image/png'),
+    );
+    if (!blob) {
+      throw new Error(`Failed to create PNG blob from canvas for sheet ${s + 1}`);
+    }
+
+    const pngBytes = new Uint8Array(await blob.arrayBuffer());
+    const pdfPage = pdfDoc.addPage([pageWidthPt, pageHeightPt]);
+    const embeddedPng = await pdfDoc.embedPng(pngBytes);
+
+    pdfPage.drawImage(embeddedPng, {
+      x: 0,
+      y: 0,
+      width: pageWidthPt,
+      height: pageHeightPt,
+    });
+  }
 
   return pdfDoc.save();
 }

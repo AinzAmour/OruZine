@@ -1,3 +1,5 @@
+import { FORMAT_REGISTRY, MINI_8_FORMAT } from '@oruzine/formats';
+import { impose } from '@oruzine/imposition';
 import {
   ArrowLeft,
   ArrowRight,
@@ -36,8 +38,12 @@ export const EditorShell: React.FC = () => {
   const {
     title,
     setTitle,
+    formatId,
     paper,
     margins,
+    bleedMm,
+    creepMm,
+    rtl,
     pages,
     activePageIndex,
     setActivePageIndex,
@@ -59,10 +65,22 @@ export const EditorShell: React.FC = () => {
   } = useDocumentStore();
 
   const [viewMode, setViewMode] = useState<'page' | 'sheet'>('page');
+  const [previewSheetIndex, setPreviewSheetIndex] = useState<number>(0);
   const [zoom, setZoom] = useState<number>(100);
   const [isSetupOpen, setIsSetupOpen] = useState<boolean>(false);
   const [isFoldGuideOpen, setIsFoldGuideOpen] = useState<boolean>(false);
   const [isExportOpen, setIsExportOpen] = useState<boolean>(false);
+
+  const activeFormat = FORMAT_REGISTRY[formatId] || MINI_8_FORMAT;
+  const plan = impose(activeFormat, pages.length, {
+    paper,
+    margins,
+    bleedMm,
+    creepMm,
+    rtl,
+  });
+  const currentSheet =
+    plan.sheets[Math.min(previewSheetIndex, plan.sheets.length - 1)] || plan.sheets[0];
   const [hasRestorableSession, setHasRestorableSession] = useState<boolean>(false);
 
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -356,7 +374,7 @@ export const EditorShell: React.FC = () => {
           <div className="flex flex-col gap-2">
             {pages.map((p, idx) => {
               const isCover = p.pageNumber === 1;
-              const isBack = p.pageNumber === 8;
+              const isBack = p.pageNumber === pages.length;
               const isSelected = activePageIndex === idx;
 
               return (
@@ -552,7 +570,7 @@ export const EditorShell: React.FC = () => {
                 Page {activePage.pageNumber}{' '}
                 {activePage.pageNumber === 1
                   ? '• Cover'
-                  : activePage.pageNumber === 8
+                  : activePage.pageNumber === pages.length
                     ? '• Back'
                     : ''}
               </div>
@@ -562,63 +580,106 @@ export const EditorShell: React.FC = () => {
             <div
               className="bg-paper xerox-border p-4 transition-all duration-150 flex flex-col gap-2 select-none"
               style={{
-                width: `${(600 * zoom) / 100}px`,
-                height: `${(420 * zoom) / 100}px`,
+                width: `${(640 * zoom) / 100}px`,
+                height: `${(440 * zoom) / 100}px`,
               }}
             >
-              <div className="text-[10px] text-ink/50 flex items-center justify-between pb-1 border-b border-chrome-border">
-                <span>8-PAGE MINI ZINE IMPOSITION (PRINTER SHEET)</span>
-                <span className="text-spot font-bold">TOP ROW IS INVERTED 180° FOR FOLDING</span>
+              <div className="text-[10px] text-ink/70 flex items-center justify-between pb-1 border-b border-chrome-border">
+                <span className="font-bold">
+                  {activeFormat.name.toUpperCase()} IMPOSITION
+                  {plan.sheets.length > 1 &&
+                    ` • SHEET ${previewSheetIndex + 1}/${plan.sheets.length} (${currentSheet.side.toUpperCase()})`}
+                </span>
+                {plan.sheets.length > 1 && (
+                  <div className="flex items-center gap-1">
+                    <button
+                      type="button"
+                      disabled={previewSheetIndex === 0}
+                      onClick={() => setPreviewSheetIndex((i) => Math.max(0, i - 1))}
+                      className="px-2 py-0.5 border border-chrome-border disabled:opacity-40 hover:bg-chrome text-[9px]"
+                    >
+                      Prev Sheet
+                    </button>
+                    <button
+                      type="button"
+                      disabled={previewSheetIndex >= plan.sheets.length - 1}
+                      onClick={() =>
+                        setPreviewSheetIndex((i) => Math.min(plan.sheets.length - 1, i + 1))
+                      }
+                      className="px-2 py-0.5 border border-chrome-border disabled:opacity-40 hover:bg-chrome text-[9px]"
+                    >
+                      Next Sheet
+                    </button>
+                  </div>
+                )}
               </div>
 
-              {/* 4 cols x 2 rows grid */}
-              <div className="grid grid-cols-4 grid-rows-2 gap-1 flex-1 relative bg-chrome/20 border border-chrome-border">
-                {/* Dashed fold lines indicator */}
-                <div className="absolute top-1/2 left-0 w-full border-b border-dashed border-gray-400 pointer-events-none" />
-                <div className="absolute top-0 left-1/4 h-full border-r border-dashed border-gray-400 pointer-events-none" />
-                <div className="absolute top-0 left-2/4 h-full border-r border-dashed border-gray-400 pointer-events-none" />
-                <div className="absolute top-0 left-3/4 h-full border-r border-dashed border-gray-400 pointer-events-none" />
-                {/* Center cut line across middle two columns */}
-                <div className="absolute top-1/2 left-1/4 w-1/2 border-b-2 border-spot pointer-events-none" />
+              {/* Sheet container */}
+              <div className="flex-1 relative bg-chrome/20 border border-chrome-border overflow-hidden">
+                {/* Render Fold Lines */}
+                {activeFormat.foldLines.map((fl) => (
+                  <div
+                    key={`fold-${fl.x1}-${fl.y1}-${fl.x2}-${fl.y2}`}
+                    className="absolute border-dashed border-gray-400 pointer-events-none"
+                    style={{
+                      left: `${fl.x1 * 100}%`,
+                      top: `${fl.y1 * 100}%`,
+                      width: fl.x1 === fl.x2 ? '1px' : `${(fl.x2 - fl.x1) * 100}%`,
+                      height: fl.y1 === fl.y2 ? '1px' : `${(fl.y2 - fl.y1) * 100}%`,
+                      borderTopWidth: fl.y1 === fl.y2 ? '1px' : 0,
+                      borderLeftWidth: fl.x1 === fl.x2 ? '1px' : 0,
+                    }}
+                  />
+                ))}
 
-                {/* Top row rotated 180 */}
-                {[5, 4, 3, 2].map((pageNum) => {
-                  const pData = pages.find((p) => p.pageNumber === pageNum);
+                {/* Render Cut Lines */}
+                {activeFormat.cutLines.map((cl) => (
+                  <div
+                    key={`cut-${cl.x1}-${cl.y1}-${cl.x2}-${cl.y2}`}
+                    className="absolute border-spot pointer-events-none"
+                    style={{
+                      left: `${cl.x1 * 100}%`,
+                      top: `${cl.y1 * 100}%`,
+                      width: cl.x1 === cl.x2 ? '2px' : `${(cl.x2 - cl.x1) * 100}%`,
+                      height: cl.y1 === cl.y2 ? '2px' : `${(cl.y2 - cl.y1) * 100}%`,
+                      borderTopWidth: cl.y1 === cl.y2 ? '2px' : 0,
+                      borderLeftWidth: cl.x1 === cl.x2 ? '2px' : 0,
+                    }}
+                  />
+                ))}
 
+                {/* Imposed Cells */}
+                {currentSheet.cells.map((cell) => {
+                  const pData = cell.page ? pages.find((p) => p.pageNumber === cell.page) : null;
                   return (
                     <div
-                      key={pageNum}
-                      className="border border-chrome-border bg-paper flex flex-col items-center justify-center p-2 relative rotate-180 overflow-hidden"
+                      key={`cell-${cell.col}-${cell.row}-${cell.page ?? 'blank'}`}
+                      className="absolute border border-chrome-border bg-paper flex flex-col items-center justify-center p-2 overflow-hidden shadow-sm"
+                      style={{
+                        left: `${cell.normalized.x * 100}%`,
+                        top: `${cell.normalized.y * 100}%`,
+                        width: `${cell.normalized.w * 100}%`,
+                        height: `${cell.normalized.h * 100}%`,
+                        transform: `rotate(${cell.rotation}deg)`,
+                        transformOrigin: 'center center',
+                      }}
                     >
-                      <div className="relative z-10 bg-paper/90 px-1 text-[10px] font-bold">
-                        p.{pageNum}
-                      </div>
-                      <div className="text-[8px] text-ink/40">
-                        {pData?.objects.length ?? 0} objs
-                      </div>
-                    </div>
-                  );
-                })}
-
-                {/* Bottom row upright */}
-                {[6, 7, 8, 1].map((pageNum) => {
-                  const pData = pages.find((p) => p.pageNumber === pageNum);
-
-                  return (
-                    <div
-                      key={pageNum}
-                      className="border border-chrome-border bg-paper flex flex-col items-center justify-center p-2 relative overflow-hidden"
-                    >
-                      <div className="relative z-10 bg-paper/90 px-1 text-[10px] font-bold">
-                        {pageNum === 1
-                          ? 'Cover (p.1)'
-                          : pageNum === 8
-                            ? 'Back (p.8)'
-                            : `p.${pageNum}`}
-                      </div>
-                      <div className="text-[8px] text-ink/40">
-                        {pData?.objects.length ?? 0} objs
-                      </div>
+                      {cell.page ? (
+                        <>
+                          <div className="relative z-10 bg-paper/90 px-1 text-[10px] font-bold">
+                            {cell.page === 1
+                              ? 'Cover (p.1)'
+                              : cell.page === pages.length
+                                ? `Back (p.${pages.length})`
+                                : `p.${cell.page}`}
+                          </div>
+                          <div className="text-[8px] text-ink/40">
+                            {pData?.objects.length ?? 0} objs
+                          </div>
+                        </>
+                      ) : (
+                        <div className="text-[9px] text-ink/30 italic">Blank</div>
+                      )}
                     </div>
                   );
                 })}

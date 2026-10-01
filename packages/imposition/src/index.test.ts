@@ -1,4 +1,4 @@
-import { MINI_8_FORMAT, PAPER_SIZES } from '@oruzine/formats';
+import { MINI_8_FORMAT, PAPER_SIZES, SADDLE_STITCH_FORMAT } from '@oruzine/formats';
 import { describe, expect, it } from 'vitest';
 import { impose } from './index';
 
@@ -109,5 +109,104 @@ describe('Imposition Engine - 8-Page Mini Zine', () => {
     const page2Cell = sheet.cells.find((c) => c.page === 2);
     expect(page2Cell?.col).toBe(0);
     expect(page2Cell?.row).toBe(0);
+  });
+});
+
+describe('Imposition Engine - Saddle-Stitch Booklet (Duplex)', () => {
+  const defaultOpts = {
+    paper: 'letter' as const,
+    margins: { top: 10, right: 10, bottom: 10, left: 10 },
+    bleedMm: 3,
+    rtl: false,
+  };
+
+  it('imposes 8-page booklet into 4 sides (2 physical sheets) with correct reader pairings', () => {
+    const plan = impose(SADDLE_STITCH_FORMAT, 8, defaultOpts);
+
+    expect(plan.sheets).toHaveLength(4); // 2 sheets x 2 sides (Front, Back)
+    expect(plan.paddedPages).toBe(0);
+
+    // Sheet 0 Front (Outer Cover): Left = 8, Right = 1
+    const s0Front = plan.sheets[0];
+    expect(s0Front.side).toBe('front');
+    expect(s0Front.cells[0].page).toBe(8);
+    expect(s0Front.cells[1].page).toBe(1);
+
+    // Sheet 0 Back (Inside Covers): Left = 2, Right = 7
+    const s0Back = plan.sheets[1];
+    expect(s0Back.side).toBe('back');
+    expect(s0Back.cells[0].page).toBe(2);
+    expect(s0Back.cells[1].page).toBe(7);
+
+    // Sheet 1 Front (Outer Center): Left = 6, Right = 3
+    const s1Front = plan.sheets[2];
+    expect(s1Front.side).toBe('front');
+    expect(s1Front.cells[0].page).toBe(6);
+    expect(s1Front.cells[1].page).toBe(3);
+
+    // Sheet 1 Back (Centerfold): Left = 4, Right = 5
+    const s1Back = plan.sheets[3];
+    expect(s1Back.side).toBe('back');
+    expect(s1Back.cells[0].page).toBe(4);
+    expect(s1Back.cells[1].page).toBe(5);
+  });
+
+  it('verifies all front/back pairs sum to N + 1 for page counts 4, 8, 12, 16, 20, 40', () => {
+    const pageCounts = [4, 8, 12, 16, 20, 40];
+
+    for (const N of pageCounts) {
+      const plan = impose(SADDLE_STITCH_FORMAT, N, defaultOpts);
+      expect(plan.sheets).toHaveLength((N / 4) * 2);
+
+      for (const sheet of plan.sheets) {
+        const leftPage = sheet.cells[0].page as number;
+        const rightPage = sheet.cells[1].page as number;
+        expect(leftPage + rightPage).toBe(N + 1);
+      }
+    }
+  });
+
+  it('pads unaligned page counts to nearest multiple of 4', () => {
+    // 7 pages should pad to 8
+    const plan7 = impose(SADDLE_STITCH_FORMAT, 7, defaultOpts);
+    expect(plan7.paddedPages).toBe(1);
+    expect(plan7.sheets).toHaveLength(4);
+    // Page 8 should be padded as null (blank)
+    const page8Cell = plan7.sheets[0].cells.find((c) => c.col === 0);
+    expect(page8Cell?.page).toBeNull();
+
+    // 10 pages should pad to 12
+    const plan10 = impose(SADDLE_STITCH_FORMAT, 10, defaultOpts);
+    expect(plan10.paddedPages).toBe(2);
+    expect(plan10.sheets).toHaveLength(6);
+  });
+
+  it('applies monotonic creep compensation outward from spine', () => {
+    const creepMm = 2.0;
+    // 16 pages = 4 sheets (s = 0, 1, 2, 3)
+    const plan = impose(SADDLE_STITCH_FORMAT, 16, { ...defaultOpts, creepMm });
+
+    // Outermost sheet s=0: creepOffset is 0
+    const s0FrontLeft = plan.sheets[0].cells[0]; // margin left
+    const s0FrontRight = plan.sheets[0].cells[1];
+    expect(s0FrontLeft.x).toBe(defaultOpts.margins.left);
+
+    // Innermost sheet s=3 (index 6 in plan.sheets): creepOffset should be exactly creepMm
+    const s3FrontLeft = plan.sheets[6].cells[0];
+    const s3FrontRight = plan.sheets[6].cells[1];
+    expect(s3FrontLeft.x).toBeCloseTo(defaultOpts.margins.left - creepMm, 2);
+    expect(s3FrontRight.x).toBeCloseTo(s0FrontRight.x + creepMm, 2);
+  });
+
+  it('swaps left and right cells when RTL is active in booklet', () => {
+    const plan = impose(SADDLE_STITCH_FORMAT, 8, { ...defaultOpts, rtl: true });
+
+    // Sheet 0 Front: Left = 1, Right = 8
+    expect(plan.sheets[0].cells[0].page).toBe(1);
+    expect(plan.sheets[0].cells[1].page).toBe(8);
+
+    // Sheet 0 Back: Left = 7, Right = 2
+    expect(plan.sheets[1].cells[0].page).toBe(7);
+    expect(plan.sheets[1].cells[1].page).toBe(2);
   });
 });

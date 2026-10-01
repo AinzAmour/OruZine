@@ -171,6 +171,70 @@ export const MINI_8_FORMAT: FormatDefinition = {
   ],
 };
 
+/**
+ * Format B: Saddle-Stitch Booklet (Duplex)
+ * Multi-sheet booklet folded along the vertical spine and stapled.
+ * Imposes 2 portrait pages per landscape sheet side.
+ * Duplex: flip on short edge.
+ * Page count must be a multiple of 4 (pads with blank pages if needed).
+ */
+export const SADDLE_STITCH_FORMAT: FormatDefinition = {
+  id: 'saddle-stitch',
+  name: 'Saddle-Stitch Booklet',
+  description:
+    'Multi-sheet booklet folded down the spine and stapled. Prints duplex (flip on short edge). Page count in multiples of 4.',
+  difficulty: 'medium',
+  needs: ['stapler', 'scissors', 'ruler'],
+  paper: {
+    sizes: ['letter', 'a4', 'a3', 'tabloid'],
+    orientation: 'landscape',
+  },
+  pageCount: {
+    min: 4,
+    max: 64,
+    multipleOf: 4,
+  },
+  sidedness: 'duplex',
+  duplexFlip: 'short-edge',
+  readingDirection: 'ltr',
+  layout: {
+    type: 'algorithm',
+    id: 'saddle-stitch',
+  },
+  foldLines: [
+    // Center vertical spine fold
+    { x1: 0.5, y1: 0, x2: 0.5, y2: 1, type: 'fold' },
+  ],
+  cutLines: [],
+  foldSteps: [
+    {
+      step: 1,
+      title: 'Print Duplex (Short-Edge Flip)',
+      instruction:
+        'Print all sheets duplex. Important: select "Flip on short edge" in your printer dialog so front and back sides align correctly.',
+    },
+    {
+      step: 2,
+      title: 'Stack Sheets in Order',
+      instruction:
+        'Stack the printed sheets in order with Sheet 1 (the outer cover) on the bottom, progressing to the innermost spread on top.',
+    },
+    {
+      step: 3,
+      title: 'Fold Down the Spine',
+      instruction:
+        'Fold the entire stack in half along the vertical center crease. Press firmly with a ruler or bone folder.',
+    },
+    {
+      step: 4,
+      title: 'Staple Along the Spine',
+      instruction:
+        'Open the booklet to the center spread and staple 2-3 staples along the center fold line from the outside in.',
+    },
+  ],
+};
+
 export const FORMAT_REGISTRY: Record<string, FormatDefinition> = {
   'mini-8': MINI_8_FORMAT,
+  'saddle-stitch': SADDLE_STITCH_FORMAT,
 };

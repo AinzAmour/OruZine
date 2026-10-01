@@ -3,7 +3,7 @@ import {
   generateImposedPdf,
   renderImposedSheetToCanvas,
 } from '@oruzine/export';
-import { MINI_8_FORMAT } from '@oruzine/formats';
+import { FORMAT_REGISTRY, MINI_8_FORMAT } from '@oruzine/formats';
 import { impose } from '@oruzine/imposition';
 import { AlertCircle, Download, Loader2, Printer, X } from 'lucide-react';
 import type React from 'react';
@@ -16,7 +16,8 @@ interface ExportModalProps {
 }
 
 export const ExportModal: React.FC<ExportModalProps> = ({ isOpen, onClose }) => {
-  const { title, paper, margins, bleedMm, rtl, pages } = useDocumentStore();
+  const { title, formatId, paper, margins, bleedMm, creepMm, rtl, pages } = useDocumentStore();
+  const activeFormat = FORMAT_REGISTRY[formatId] || MINI_8_FORMAT;
 
   const [exportFormat, setExportFormat] = useState<'pdf' | 'jpg' | 'png'>('pdf');
   const [dpi, setDpi] = useState<number>(300);
@@ -32,10 +33,11 @@ export const ExportModal: React.FC<ExportModalProps> = ({ isOpen, onClose }) => 
     setErrorMsg(null);
 
     try {
-      const plan = impose(MINI_8_FORMAT, 8, {
+      const plan = impose(activeFormat, pages.length, {
         paper,
         margins,
         bleedMm,
+        creepMm,
         rtl,
       });
 
@@ -113,7 +115,7 @@ export const ExportModal: React.FC<ExportModalProps> = ({ isOpen, onClose }) => 
       const filename = `${title.toLowerCase().replace(/[^a-z0-9_-]/g, '_') || 'oruzine'}_imposed`;
 
       if (exportFormat === 'pdf') {
-        const pdfBytes = await generateImposedPdf(MINI_8_FORMAT, preparedPages, plan, {
+        const pdfBytes = await generateImposedPdf(activeFormat, preparedPages, plan, {
           dpi,
           showGuides,
           grayscale,
@@ -129,24 +131,34 @@ export const ExportModal: React.FC<ExportModalProps> = ({ isOpen, onClose }) => 
         a.click();
         URL.revokeObjectURL(url);
       } else {
-        // JPG or PNG sheet export
-        const canvas = await renderImposedSheetToCanvas(MINI_8_FORMAT, preparedPages, plan, {
-          dpi,
-          showGuides,
-          grayscale,
-          rtl,
-        });
+        // JPG or PNG sheet export (for multi-sheet booklets, exports each sheet)
+        for (let s = 0; s < plan.sheets.length; s++) {
+          const canvas = await renderImposedSheetToCanvas(
+            activeFormat,
+            preparedPages,
+            plan,
+            {
+              dpi,
+              showGuides,
+              grayscale,
+              rtl,
+            },
+            s,
+          );
 
-        const mime = exportFormat === 'jpg' ? 'image/jpeg' : 'image/png';
-        const blob = await new Promise<Blob | null>((res) => canvas.toBlob(res, mime, 0.95));
+          const mime = exportFormat === 'jpg' ? 'image/jpeg' : 'image/png';
+          const blob = await new Promise<Blob | null>((res) => canvas.toBlob(res, mime, 0.95));
 
-        if (blob) {
-          const url = URL.createObjectURL(blob);
-          const a = document.createElement('a');
-          a.href = url;
-          a.download = `${filename}.${exportFormat}`;
-          a.click();
-          URL.revokeObjectURL(url);
+          if (blob) {
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            const sheetSuffix =
+              plan.sheets.length > 1 ? `_sheet_${s + 1}_${plan.sheets[s].side}` : '';
+            a.download = `${filename}${sheetSuffix}.${exportFormat}`;
+            a.click();
+            URL.revokeObjectURL(url);
+          }
         }
       }
 
@@ -294,6 +306,16 @@ export const ExportModal: React.FC<ExportModalProps> = ({ isOpen, onClose }) => 
               />
             </label>
           </div>
+
+          {/* Duplex Notice for Saddle-Stitch Booklets */}
+          {activeFormat.sidedness === 'duplex' && (
+            <div className="p-3 bg-spot/10 border border-spot text-[11px] text-ink leading-relaxed">
+              <strong className="text-spot block mb-0.5">🖨️ Duplex Booklet Printing:</strong>
+              This booklet prints double-sided. In your printer dialog, select{' '}
+              <strong>"Print on Both Sides (Duplex)"</strong> and select{' '}
+              <strong>"Flip on Short Edge"</strong> so front and back pages align!
+            </div>
+          )}
 
           {/* Home Printer Notice */}
           <div className="p-3 bg-chrome border border-chrome-border text-[11px] text-ink/80 leading-relaxed">

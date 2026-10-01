@@ -53,6 +53,7 @@ export interface DocumentSnapshot {
   paper: PaperSize;
   margins: Margins;
   bleedMm: number;
+  creepMm?: number;
   rtl: boolean;
   pages: DocumentPage[];
 }
@@ -64,9 +65,10 @@ export interface ZineDocumentState {
   paper: PaperSize;
   margins: Margins;
   bleedMm: number;
+  creepMm: number;
   rtl: boolean;
   pages: DocumentPage[];
-  activePageIndex: number; // 0-indexed (0..7)
+  activePageIndex: number; // 0-indexed
   selectedObjectId: string | null;
   isAutosaved: boolean;
   lastSavedAt: string | null;
@@ -82,9 +84,12 @@ export interface ZineDocumentState {
 
   // Document actions
   setTitle: (title: string) => void;
+  setFormat: (formatId: string, pageCount?: number) => void;
+  setPageCount: (count: number) => void;
   setPaper: (paper: PaperSize) => void;
   setMargins: (margins: Margins) => void;
   setBleedMm: (bleedMm: number) => void;
+  setCreepMm: (creepMm: number) => void;
   setRtl: (rtl: boolean) => void;
   setActivePageIndex: (index: number) => void;
   setSelectedObjectId: (id: string | null) => void;
@@ -114,10 +119,10 @@ export interface ZineDocumentState {
   restoreSavedSession: () => Promise<boolean>;
 }
 
-const createDefaultPages = (): DocumentPage[] => {
-  return Array.from({ length: 8 }, (_, i) => {
+const createDefaultPages = (count = 8): DocumentPage[] => {
+  return Array.from({ length: count }, (_, i) => {
     const isCover = i === 0;
-    const isBack = i === 7;
+    const isBack = i === count - 1;
 
     const defaultText: TextObject = {
       id: `text-${i + 1}-title`,
@@ -154,8 +159,9 @@ export const useDocumentStore = create<ZineDocumentState>((set, get) => ({
   paper: 'letter',
   margins: { top: 5, right: 5, bottom: 5, left: 5 },
   bleedMm: 3,
+  creepMm: 0,
   rtl: false,
-  pages: createDefaultPages(),
+  pages: createDefaultPages(8),
   activePageIndex: 0,
   selectedObjectId: null,
   isAutosaved: true,
@@ -172,6 +178,7 @@ export const useDocumentStore = create<ZineDocumentState>((set, get) => ({
       paper: state.paper,
       margins: state.margins,
       bleedMm: state.bleedMm,
+      creepMm: state.creepMm,
       rtl: state.rtl,
       pages: JSON.parse(JSON.stringify(state.pages)),
     };
@@ -198,6 +205,7 @@ export const useDocumentStore = create<ZineDocumentState>((set, get) => ({
       paper: get().paper,
       margins: get().margins,
       bleedMm: get().bleedMm,
+      creepMm: get().creepMm,
       rtl: get().rtl,
       pages: JSON.parse(JSON.stringify(get().pages)),
     };
@@ -224,6 +232,7 @@ export const useDocumentStore = create<ZineDocumentState>((set, get) => ({
       paper: get().paper,
       margins: get().margins,
       bleedMm: get().bleedMm,
+      creepMm: get().creepMm,
       rtl: get().rtl,
       pages: JSON.parse(JSON.stringify(get().pages)),
     };
@@ -243,6 +252,50 @@ export const useDocumentStore = create<ZineDocumentState>((set, get) => ({
     get().triggerAutosave();
   },
 
+  setFormat: (formatId, requestedCount) => {
+    get().pushHistory();
+    const currentPages = get().pages;
+    const count =
+      requestedCount ??
+      (formatId === 'mini-8' ? 8 : Math.max(4, Math.ceil(currentPages.length / 4) * 4));
+    let newPages: DocumentPage[];
+    if (count > currentPages.length) {
+      const extra = createDefaultPages(count).slice(currentPages.length);
+      newPages = [...currentPages, ...extra];
+    } else {
+      newPages = currentPages.slice(0, count);
+    }
+    newPages = newPages.map((p, idx) => ({ ...p, pageNumber: idx + 1 }));
+    const newActiveIndex = Math.min(get().activePageIndex, newPages.length - 1);
+    set({
+      formatId,
+      pages: newPages,
+      activePageIndex: newActiveIndex,
+      selectedObjectId: null,
+    });
+    get().triggerAutosave();
+  },
+
+  setPageCount: (count) => {
+    get().pushHistory();
+    const currentPages = get().pages;
+    let newPages: DocumentPage[];
+    if (count > currentPages.length) {
+      const extra = createDefaultPages(count).slice(currentPages.length);
+      newPages = [...currentPages, ...extra];
+    } else {
+      newPages = currentPages.slice(0, count);
+    }
+    newPages = newPages.map((p, idx) => ({ ...p, pageNumber: idx + 1 }));
+    const newActiveIndex = Math.min(get().activePageIndex, newPages.length - 1);
+    set({
+      pages: newPages,
+      activePageIndex: newActiveIndex,
+      selectedObjectId: null,
+    });
+    get().triggerAutosave();
+  },
+
   setPaper: (paper) => {
     get().pushHistory();
     set({ paper });
@@ -258,6 +311,12 @@ export const useDocumentStore = create<ZineDocumentState>((set, get) => ({
   setBleedMm: (bleedMm) => {
     get().pushHistory();
     set({ bleedMm });
+    get().triggerAutosave();
+  },
+
+  setCreepMm: (creepMm) => {
+    get().pushHistory();
+    set({ creepMm });
     get().triggerAutosave();
   },
 

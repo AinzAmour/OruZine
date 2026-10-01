@@ -39,35 +39,73 @@ export const ExportModal: React.FC<ExportModalProps> = ({ isOpen, onClose }) => 
         rtl,
       });
 
-      // Prepare image elements asynchronously
+      // Prepare objects and image elements asynchronously
       const preparedPages: ExportPageData[] = await Promise.all(
         pages.map(async (p) => {
-          let imgEl: HTMLImageElement | null = null;
-          if (p.imageDataUrl) {
-            const img = new Image();
-            img.crossOrigin = 'anonymous';
-            img.src = p.imageDataUrl;
-            await new Promise((res) => {
-              img.onload = () => res(null);
-              img.onerror = () => res(null);
-            });
-            imgEl = img;
-          }
+          const exportObjects = await Promise.all(
+            (p.objects || []).map(async (obj) => {
+              if (obj.type === 'image') {
+                let imgEl: HTMLImageElement | null = null;
+                if (obj.imageDataUrl) {
+                  const img = new Image();
+                  img.crossOrigin = 'anonymous';
+                  img.src = obj.imageDataUrl;
+                  await new Promise((res) => {
+                    img.onload = () => res(null);
+                    img.onerror = () => res(null);
+                  });
+                  imgEl = img;
+                }
+                return {
+                  id: obj.id,
+                  type: 'image' as const,
+                  xPercent: obj.xPercent,
+                  yPercent: obj.yPercent,
+                  wPercent: obj.wPercent,
+                  hPercent: obj.hPercent,
+                  rotation: obj.rotation,
+                  opacity: obj.opacity,
+                  imageElement: imgEl,
+                  imageFit: obj.imageFit,
+                };
+              }
+              if (obj.type === 'text') {
+                return {
+                  id: obj.id,
+                  type: 'text' as const,
+                  xPercent: obj.xPercent,
+                  yPercent: obj.yPercent,
+                  wPercent: obj.wPercent,
+                  hPercent: obj.hPercent,
+                  rotation: obj.rotation,
+                  opacity: obj.opacity,
+                  text: obj.text,
+                  fontSizePt: obj.fontSizePt,
+                  color: obj.color,
+                  bold: obj.bold,
+                };
+              }
+              return {
+                id: obj.id,
+                type: 'shape' as const,
+                xPercent: obj.xPercent,
+                yPercent: obj.yPercent,
+                wPercent: obj.wPercent,
+                hPercent: obj.hPercent,
+                rotation: obj.rotation,
+                opacity: obj.opacity,
+                shapeType: obj.shapeType,
+                fillColor: obj.fillColor,
+                strokeColor: obj.strokeColor,
+                strokeWidth: obj.strokeWidth,
+              };
+            }),
+          );
 
           return {
             pageNumber: p.pageNumber,
-            backgroundColor: '#ffffff',
-            imageElement: imgEl,
-            imageFit: p.imageFit,
-            textBoxes: p.textBoxes.map((b) => ({
-              id: b.id,
-              text: b.text,
-              xPercent: b.xPercent,
-              yPercent: b.yPercent,
-              fontSizePt: b.fontSizePt,
-              color: b.color,
-              bold: b.bold,
-            })),
+            backgroundColor: p.backgroundColor || '#ffffff',
+            objects: exportObjects,
           };
         }),
       );

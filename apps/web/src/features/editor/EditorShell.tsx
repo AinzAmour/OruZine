@@ -2,24 +2,35 @@ import {
   ArrowLeft,
   ArrowRight,
   CheckCircle2,
+  Circle,
+  Copy,
   Download,
   Image as ImageIcon,
-  Layers,
   Maximize2,
+  Redo,
   RotateCcw,
   Scissors,
   Settings,
+  Square,
   Trash2,
   Type,
+  Undo,
   ZoomIn,
   ZoomOut,
 } from 'lucide-react';
 import type React from 'react';
 import { useEffect, useRef, useState } from 'react';
-import { type TextBox, useDocumentStore } from '../../stores/documentStore';
+import {
+  type ImageObject,
+  type ShapeObject,
+  type TextObject,
+  useDocumentStore,
+} from '../../stores/documentStore';
 import { ExportModal } from '../export/ExportModal';
 import { FormatSetupModal } from '../format/FormatSetupModal';
 import { FoldGuideModal } from '../preview/FoldGuideModal';
+import { LayersPanel } from './LayersPanel';
+import { TransformBox } from './TransformBox';
 
 export const EditorShell: React.FC = () => {
   const {
@@ -30,22 +41,25 @@ export const EditorShell: React.FC = () => {
     pages,
     activePageIndex,
     setActivePageIndex,
-    setPageImage,
-    clearPageImage,
-    setPageImageFit,
-    addTextBox,
-    updateTextBox,
-    removeTextBox,
+    selectedObjectId,
+    setSelectedObjectId,
+    addObject,
+    updateObject,
+    removeObject,
+    duplicateObject,
     reorderPages,
     resetDocument,
     isAutosaved,
     checkSavedSession,
     restoreSavedSession,
+    undo,
+    redo,
+    canUndo,
+    canRedo,
   } = useDocumentStore();
 
   const [viewMode, setViewMode] = useState<'page' | 'sheet'>('page');
   const [zoom, setZoom] = useState<number>(100);
-  const [selectedTextBoxId, setSelectedTextBoxId] = useState<string | null>(null);
   const [isSetupOpen, setIsSetupOpen] = useState<boolean>(false);
   const [isFoldGuideOpen, setIsFoldGuideOpen] = useState<boolean>(false);
   const [isExportOpen, setIsExportOpen] = useState<boolean>(false);
@@ -55,7 +69,7 @@ export const EditorShell: React.FC = () => {
   const canvasRef = useRef<HTMLDivElement>(null);
 
   const activePage = pages[activePageIndex] ?? pages[0];
-  const selectedTextBox = activePage.textBoxes.find((b) => b.id === selectedTextBoxId) ?? null;
+  const selectedObject = activePage.objects.find((o) => o.id === selectedObjectId) ?? null;
 
   // Check saved session on mount
   useEffect(() => {
@@ -66,7 +80,53 @@ export const EditorShell: React.FC = () => {
     });
   }, [checkSavedSession]);
 
-  // Handle image upload
+  // Global Keyboard shortcuts
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      const isInput =
+        e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement;
+
+      // Undo / Redo
+      if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'z') {
+        e.preventDefault();
+        if (e.shiftKey) {
+          if (canRedo()) redo();
+        } else {
+          if (canUndo()) undo();
+        }
+      } else if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'y') {
+        e.preventDefault();
+        if (canRedo()) redo();
+      }
+
+      // Delete selected object
+      if (!isInput && (e.key === 'Delete' || e.key === 'Backspace')) {
+        if (selectedObjectId) {
+          e.preventDefault();
+          removeObject(activePageIndex, selectedObjectId);
+        }
+      }
+
+      // Escape to deselect
+      if (e.key === 'Escape') {
+        setSelectedObjectId(null);
+      }
+    };
+
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [
+    canUndo,
+    canRedo,
+    undo,
+    redo,
+    selectedObjectId,
+    activePageIndex,
+    removeObject,
+    setSelectedObjectId,
+  ]);
+
+  // Add new Image object
   const handleImageFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (file) {
@@ -74,7 +134,21 @@ export const EditorShell: React.FC = () => {
       reader.onload = (event) => {
         const dataUrl = event.target?.result as string;
         if (dataUrl) {
-          setPageImage(activePageIndex, dataUrl, 'cover');
+          const newImg: ImageObject = {
+            id: `img-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
+            type: 'image',
+            imageDataUrl: dataUrl,
+            imageFit: 'cover',
+            xPercent: 0.1,
+            yPercent: 0.1,
+            wPercent: 0.8,
+            hPercent: 0.5,
+            rotation: 0,
+            opacity: 1,
+            locked: false,
+            hidden: false,
+          };
+          addObject(activePageIndex, newImg);
         }
       };
       reader.readAsDataURL(file);
@@ -82,41 +156,50 @@ export const EditorShell: React.FC = () => {
     if (e.target) e.target.value = '';
   };
 
-  // Dragging text box on canvas
-  const handleCanvasMouseDown = (e: React.MouseEvent, box: TextBox) => {
-    e.stopPropagation();
-    setSelectedTextBoxId(box.id);
-
-    const canvasEl = canvasRef.current;
-    if (!canvasEl) return;
-
-    const rect = canvasEl.getBoundingClientRect();
-    const startX = e.clientX;
-    const startY = e.clientY;
-    const initialXPercent = box.xPercent;
-    const initialYPercent = box.yPercent;
-
-    const onMouseMove = (moveEvent: MouseEvent) => {
-      const deltaX = moveEvent.clientX - startX;
-      const deltaY = moveEvent.clientY - startY;
-
-      const newXPercent = Math.max(0, Math.min(0.9, initialXPercent + deltaX / rect.width));
-      const newYPercent = Math.max(0, Math.min(0.9, initialYPercent + deltaY / rect.height));
-
-      updateTextBox(activePageIndex, box.id, {
-        xPercent: Number(newXPercent.toFixed(3)),
-        yPercent: Number(newYPercent.toFixed(3)),
-      });
+  // Add new Text object
+  const handleAddText = () => {
+    const newText: TextObject = {
+      id: `text-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
+      type: 'text',
+      text: 'Double click to edit',
+      fontSizePt: 14,
+      color: '#121212',
+      bold: false,
+      xPercent: 0.15,
+      yPercent: 0.35,
+      wPercent: 0.7,
+      hPercent: 0.12,
+      rotation: 0,
+      opacity: 1,
+      locked: false,
+      hidden: false,
     };
-
-    const onMouseUp = () => {
-      window.removeEventListener('mousemove', onMouseMove);
-      window.removeEventListener('mouseup', onMouseUp);
-    };
-
-    window.addEventListener('mousemove', onMouseMove);
-    window.addEventListener('mouseup', onMouseUp);
+    addObject(activePageIndex, newText);
   };
+
+  // Add new Shape object
+  const handleAddShape = (shapeType: 'rect' | 'circle') => {
+    const newShape: ShapeObject = {
+      id: `shape-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
+      type: 'shape',
+      shapeType,
+      fillColor: '#f4f4ee',
+      strokeColor: '#121212',
+      strokeWidth: 2,
+      xPercent: 0.2,
+      yPercent: 0.4,
+      wPercent: 0.5,
+      hPercent: 0.25,
+      rotation: 0,
+      opacity: 1,
+      locked: false,
+      hidden: false,
+    };
+    addObject(activePageIndex, newShape);
+  };
+
+  const canvasWidthPx = (280 * zoom) / 100;
+  const canvasHeightPx = (380 * zoom) / 100;
 
   return (
     <div className="flex flex-col h-[calc(100vh-53px)] font-mono text-ink bg-paper select-none">
@@ -179,6 +262,28 @@ export const EditorShell: React.FC = () => {
         </div>
 
         <div className="flex items-center gap-2">
+          {/* Undo / Redo */}
+          <div className="flex items-center border border-chrome-border">
+            <button
+              type="button"
+              disabled={!canUndo()}
+              onClick={undo}
+              className="p-1.5 hover:bg-paper disabled:opacity-30 transition-colors text-ink"
+              title="Undo (Ctrl+Z)"
+            >
+              <Undo size={14} />
+            </button>
+            <button
+              type="button"
+              disabled={!canRedo()}
+              onClick={redo}
+              className="p-1.5 hover:bg-paper disabled:opacity-30 border-l border-chrome-border transition-colors text-ink"
+              title="Redo (Ctrl+Shift+Z / Ctrl+Y)"
+            >
+              <Redo size={14} />
+            </button>
+          </div>
+
           {/* View Mode Toggle */}
           <div className="flex items-center border border-chrome-border text-xs">
             <button
@@ -225,7 +330,9 @@ export const EditorShell: React.FC = () => {
           <button
             type="button"
             onClick={() => {
-              if (window.confirm('Reset this zine and start over?')) {
+              if (
+                window.confirm('Reset this zine and start over? All unsaved work will be cleared.')
+              ) {
                 resetDocument();
               }
             }}
@@ -266,13 +373,11 @@ export const EditorShell: React.FC = () => {
                     onClick={() => setActivePageIndex(idx)}
                     className="flex items-center gap-2 text-left flex-1"
                   >
-                    <div className="w-9 h-12 border border-dashed border-ink/30 bg-paper overflow-hidden flex items-center justify-center shrink-0">
-                      {p.imageDataUrl ? (
-                        <img
-                          src={p.imageDataUrl}
-                          alt={`Page ${p.pageNumber}`}
-                          className="w-full h-full object-cover"
-                        />
+                    <div className="w-9 h-12 border border-dashed border-ink/30 bg-paper overflow-hidden flex items-center justify-center shrink-0 relative">
+                      {p.objects.length > 0 ? (
+                        <div className="text-[9px] text-ink/70 font-mono">
+                          {p.objects.length} obj
+                        </div>
                       ) : (
                         <span className="text-[9px] text-ink/40">p.{p.pageNumber}</span>
                       )}
@@ -282,9 +387,7 @@ export const EditorShell: React.FC = () => {
                         {p.pageNumber}.{' '}
                         {isCover ? 'Cover' : isBack ? 'Back' : `Page ${p.pageNumber}`}
                       </span>
-                      <span className="text-[10px] text-ink/50">
-                        {p.textBoxes.length} text {p.imageDataUrl ? '• 1 image' : ''}
-                      </span>
+                      <span className="text-[10px] text-ink/50">{p.objects.length} layers</span>
                     </div>
                   </button>
 
@@ -316,9 +419,13 @@ export const EditorShell: React.FC = () => {
         </aside>
 
         {/* Center: Canvas Workspace */}
-        <main className="flex-1 bg-paper/60 relative flex flex-col items-center justify-center p-8 overflow-auto">
+        {/* biome-ignore lint/a11y/useKeyWithClickEvents: Canvas deselection */}
+        <main
+          className="flex-1 bg-paper/60 relative flex flex-col items-center justify-center p-8 overflow-auto"
+          onClick={() => setSelectedObjectId(null)}
+        >
           {/* Zoom controls */}
-          <div className="absolute top-4 right-4 flex items-center gap-1 bg-chrome border border-chrome-border p-1 text-xs z-10">
+          <div className="absolute top-4 right-4 flex items-center gap-1 bg-chrome border border-chrome-border p-1 text-xs z-30">
             <button
               type="button"
               onClick={() => setZoom((z) => Math.max(50, z - 10))}
@@ -345,68 +452,103 @@ export const EditorShell: React.FC = () => {
 
           {/* Active Canvas / Sheet Box */}
           {viewMode === 'page' ? (
+            // biome-ignore lint/a11y/noStaticElementInteractions: Sheet click boundary
+            // biome-ignore lint/a11y/useKeyWithClickEvents: Sheet click boundary
             <div
               ref={canvasRef}
+              onClick={(e) => e.stopPropagation()}
               className="bg-paper xerox-border transition-all duration-150 flex flex-col justify-between relative overflow-hidden select-none"
               style={{
-                width: `${(280 * zoom) / 100}px`,
-                height: `${(380 * zoom) / 100}px`,
+                width: `${canvasWidthPx}px`,
+                height: `${canvasHeightPx}px`,
               }}
             >
               {/* Bleed outline */}
               <div className="absolute inset-2 border border-dashed border-spot/20 pointer-events-none z-10" />
 
-              {/* Background Image if uploaded */}
-              {activePage.imageDataUrl ? (
-                <img
-                  src={activePage.imageDataUrl}
-                  alt={`Page ${activePage.pageNumber}`}
-                  className={`absolute inset-0 w-full h-full pointer-events-none ${
-                    activePage.imageFit === 'contain' ? 'object-contain' : 'object-cover'
-                  }`}
-                />
-              ) : (
-                <button
-                  type="button"
-                  onClick={() => fileInputRef.current?.click()}
-                  className="absolute inset-8 border-2 border-dashed border-chrome-border flex flex-col items-center justify-center gap-2 text-ink/40 hover:border-spot hover:text-spot transition-colors cursor-pointer"
-                >
-                  <ImageIcon size={28} />
-                  <span className="text-xs font-bold">CLICK TO ADD IMAGE</span>
-                  <span className="text-[10px]">JPG, PNG, WebP</span>
-                </button>
-              )}
+              {/* Render all page objects */}
+              {activePage.objects.map((obj) => {
+                if (obj.hidden) return null;
+                const isSelected = selectedObjectId === obj.id;
 
-              {/* Free Text Boxes */}
-              {activePage.textBoxes.map((box) => {
-                const isSelected = selectedTextBoxId === box.id;
+                const leftPx = obj.xPercent * canvasWidthPx;
+                const topPx = obj.yPercent * canvasHeightPx;
+                const widthPx = obj.wPercent * canvasWidthPx;
+                const heightPx = obj.hPercent * canvasHeightPx;
 
                 return (
-                  <button
-                    type="button"
-                    key={box.id}
-                    onClick={() => setSelectedTextBoxId(box.id)}
-                    onMouseDown={(e) => handleCanvasMouseDown(e, box)}
-                    className={`absolute p-1 cursor-move transition-shadow z-20 text-left ${
-                      isSelected
-                        ? 'border border-spot ring-1 ring-spot bg-paper/90 shadow'
-                        : 'hover:border hover:border-dashed hover:border-ink/50 bg-paper/60'
+                  // biome-ignore lint/a11y/noStaticElementInteractions: Interactive canvas object element
+                  // biome-ignore lint/a11y/useKeyWithClickEvents: Interactive canvas object element
+                  <div
+                    key={obj.id}
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      setSelectedObjectId(obj.id);
+                    }}
+                    className={`absolute select-none pointer-events-auto cursor-pointer ${
+                      isSelected ? 'ring-1 ring-spot/50' : ''
                     }`}
                     style={{
-                      left: `${box.xPercent * 100}%`,
-                      top: `${box.yPercent * 100}%`,
-                      color: box.color,
-                      fontWeight: box.bold ? 'bold' : 'normal',
-                      fontSize: `${Math.max(10, (box.fontSizePt * zoom) / 100)}px`,
+                      left: `${leftPx}px`,
+                      top: `${topPx}px`,
+                      width: `${widthPx}px`,
+                      height: `${heightPx}px`,
+                      transform: `rotate(${obj.rotation}deg)`,
+                      transformOrigin: 'center center',
+                      opacity: obj.opacity,
                     }}
                   >
-                    <span className="whitespace-pre-wrap">{box.text}</span>
-                  </button>
+                    {obj.type === 'shape' && (
+                      <div
+                        className="w-full h-full"
+                        style={{
+                          backgroundColor: obj.fillColor || 'transparent',
+                          borderColor: obj.strokeColor || '#121212',
+                          borderWidth: `${obj.strokeWidth || 2}px`,
+                          borderStyle: 'solid',
+                          borderRadius: obj.shapeType === 'circle' ? '9999px' : '0px',
+                        }}
+                      />
+                    )}
+
+                    {obj.type === 'image' && obj.imageDataUrl && (
+                      <img
+                        src={obj.imageDataUrl}
+                        alt="Layer"
+                        className={`w-full h-full pointer-events-none ${
+                          obj.imageFit === 'contain' ? 'object-contain' : 'object-cover'
+                        }`}
+                      />
+                    )}
+
+                    {obj.type === 'text' && (
+                      <div
+                        className="w-full h-full whitespace-pre-wrap overflow-hidden"
+                        style={{
+                          color: obj.color,
+                          fontWeight: obj.bold ? 'bold' : 'normal',
+                          fontSize: `${Math.max(9, (obj.fontSizePt * zoom) / 100)}px`,
+                        }}
+                      >
+                        {obj.text}
+                      </div>
+                    )}
+                  </div>
                 );
               })}
 
+              {/* Interactive Transform Bounding Box */}
+              {selectedObject && (
+                <TransformBox
+                  object={selectedObject}
+                  zoom={zoom}
+                  canvasWidthPx={canvasWidthPx}
+                  canvasHeightPx={canvasHeightPx}
+                />
+              )}
+
               {/* Page Number Label */}
-              <div className="absolute top-2 left-2 z-10 text-[9px] px-1.5 py-0.5 bg-paper/90 border border-chrome-border text-ink/70">
+              <div className="absolute top-2 left-2 z-20 text-[9px] px-1.5 py-0.5 bg-paper/90 border border-chrome-border text-ink/70 pointer-events-none">
                 Page {activePage.pageNumber}{' '}
                 {activePage.pageNumber === 1
                   ? '• Cover'
@@ -448,15 +590,11 @@ export const EditorShell: React.FC = () => {
                       key={pageNum}
                       className="border border-chrome-border bg-paper flex flex-col items-center justify-center p-2 relative rotate-180 overflow-hidden"
                     >
-                      {pData?.imageDataUrl && (
-                        <img
-                          src={pData.imageDataUrl}
-                          alt={`Page ${pageNum}`}
-                          className="absolute inset-0 w-full h-full object-cover opacity-80 pointer-events-none"
-                        />
-                      )}
                       <div className="relative z-10 bg-paper/90 px-1 text-[10px] font-bold">
                         p.{pageNum}
+                      </div>
+                      <div className="text-[8px] text-ink/40">
+                        {pData?.objects.length ?? 0} objs
                       </div>
                     </div>
                   );
@@ -471,19 +609,15 @@ export const EditorShell: React.FC = () => {
                       key={pageNum}
                       className="border border-chrome-border bg-paper flex flex-col items-center justify-center p-2 relative overflow-hidden"
                     >
-                      {pData?.imageDataUrl && (
-                        <img
-                          src={pData.imageDataUrl}
-                          alt={`Page ${pageNum}`}
-                          className="absolute inset-0 w-full h-full object-cover opacity-80 pointer-events-none"
-                        />
-                      )}
                       <div className="relative z-10 bg-paper/90 px-1 text-[10px] font-bold">
                         {pageNum === 1
                           ? 'Cover (p.1)'
                           : pageNum === 8
                             ? 'Back (p.8)'
                             : `p.${pageNum}`}
+                      </div>
+                      <div className="text-[8px] text-ink/40">
+                        {pData?.objects.length ?? 0} objs
                       </div>
                     </div>
                   );
@@ -494,140 +628,180 @@ export const EditorShell: React.FC = () => {
         </main>
 
         {/* Right: Inspector */}
-        <aside className="w-72 border-l border-chrome-border bg-chrome p-4 flex flex-col gap-4 overflow-y-auto">
-          <div className="flex items-center justify-between text-xs text-ink/70 pb-2 border-b border-chrome-border">
-            <span>PAGE & OBJECT INSPECTOR</span>
-            <Layers size={13} />
-          </div>
+        <aside className="w-80 border-l border-chrome-border bg-chrome p-4 flex flex-col gap-4 overflow-y-auto">
+          {/* Layers Panel */}
+          <LayersPanel />
 
-          {/* Page Image Control */}
-          <div className="flex flex-col gap-2 text-xs border-b border-chrome-border pb-4">
-            <span className="text-[10px] text-ink/60 uppercase font-bold">Page Image</span>
-            {activePage.imageDataUrl ? (
-              <div className="flex flex-col gap-2">
-                <div className="w-full aspect-[4/3] border border-chrome-border overflow-hidden bg-paper relative">
-                  <img
-                    src={activePage.imageDataUrl}
-                    alt="Page preview"
-                    className={`w-full h-full ${
-                      activePage.imageFit === 'contain' ? 'object-contain' : 'object-cover'
-                    }`}
-                  />
-                </div>
-                <div className="flex items-center justify-between">
-                  <div className="flex border border-chrome-border text-[11px]">
-                    <button
-                      type="button"
-                      onClick={() => setPageImageFit(activePageIndex, 'cover')}
-                      className={`px-2 py-0.5 ${
-                        activePage.imageFit === 'cover'
-                          ? 'bg-spot text-spot-contrast font-bold'
-                          : ''
-                      }`}
-                    >
-                      Cover
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => setPageImageFit(activePageIndex, 'contain')}
-                      className={`px-2 py-0.5 border-l border-chrome-border ${
-                        activePage.imageFit === 'contain'
-                          ? 'bg-spot text-spot-contrast font-bold'
-                          : ''
-                      }`}
-                    >
-                      Contain
-                    </button>
-                  </div>
-
-                  <button
-                    type="button"
-                    onClick={() => clearPageImage(activePageIndex)}
-                    className="p-1 text-red-500 hover:bg-red-500/10 border border-chrome-border"
-                    title="Remove Image"
-                  >
-                    <Trash2 size={13} />
-                  </button>
-                </div>
-              </div>
-            ) : (
-              <button
-                type="button"
-                onClick={() => fileInputRef.current?.click()}
-                className="p-3 border-2 border-dashed border-chrome-border hover:border-spot bg-paper text-center flex flex-col items-center gap-1 cursor-pointer"
-              >
-                <ImageIcon size={18} className="text-spot" />
-                <span className="font-bold text-[11px]">Upload Image</span>
-              </button>
-            )}
-          </div>
-
-          {/* Selected Text Box Controls */}
-          {selectedTextBox ? (
-            <div className="flex flex-col gap-3 text-xs">
+          {/* Selected Object Inspector */}
+          {selectedObject ? (
+            <div className="flex flex-col gap-3 text-xs border-t border-chrome-border pt-3">
               <div className="flex items-center justify-between">
-                <span className="text-[10px] text-ink/60 uppercase font-bold">Selected Text</span>
-                <button
-                  type="button"
-                  onClick={() => removeTextBox(activePageIndex, selectedTextBox.id)}
-                  className="p-1 text-red-500 hover:bg-red-500/10 border border-chrome-border"
-                  title="Delete text box"
-                >
-                  <Trash2 size={12} />
-                </button>
-              </div>
-
-              <div>
-                <textarea
-                  value={selectedTextBox.text}
-                  onChange={(e) =>
-                    updateTextBox(activePageIndex, selectedTextBox.id, { text: e.target.value })
-                  }
-                  className="w-full p-2 border border-chrome-border bg-paper text-xs text-ink focus:outline-none focus:border-spot font-mono"
-                  rows={3}
-                />
-              </div>
-
-              <div className="grid grid-cols-2 gap-2">
-                <div>
-                  <span className="text-[10px] text-ink/60 block mb-1">Font Size</span>
-                  <input
-                    type="number"
-                    min={8}
-                    max={48}
-                    value={selectedTextBox.fontSizePt}
-                    onChange={(e) =>
-                      updateTextBox(activePageIndex, selectedTextBox.id, {
-                        fontSizePt: Number(e.target.value),
-                      })
-                    }
-                    className="w-full p-1 border border-chrome-border bg-paper text-xs"
-                  />
-                </div>
-
-                <div>
-                  <span className="text-[10px] text-ink/60 block mb-1">Style</span>
+                <span className="text-[10px] text-ink/60 uppercase font-bold">
+                  Selected: {selectedObject.type}
+                </span>
+                <div className="flex items-center gap-1">
                   <button
                     type="button"
-                    onClick={() =>
-                      updateTextBox(activePageIndex, selectedTextBox.id, {
-                        bold: !selectedTextBox.bold,
-                      })
-                    }
-                    className={`w-full p-1 border font-bold ${
-                      selectedTextBox.bold
-                        ? 'border-spot bg-spot text-spot-contrast'
-                        : 'border-chrome-border'
-                    }`}
+                    onClick={() => duplicateObject(activePageIndex, selectedObject.id)}
+                    className="p-1 hover:bg-paper border border-chrome-border"
+                    title="Duplicate"
                   >
-                    Bold
+                    <Copy size={12} />
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => removeObject(activePageIndex, selectedObject.id)}
+                    className="p-1 text-red-500 hover:bg-red-500/10 border border-chrome-border"
+                    title="Delete"
+                  >
+                    <Trash2 size={12} />
                   </button>
                 </div>
+              </div>
+
+              {/* Text specific props */}
+              {selectedObject.type === 'text' && (
+                <div className="flex flex-col gap-2">
+                  <textarea
+                    value={selectedObject.text}
+                    onChange={(e) =>
+                      updateObject(activePageIndex, selectedObject.id, { text: e.target.value })
+                    }
+                    className="w-full p-2 border border-chrome-border bg-paper text-xs text-ink font-mono"
+                    rows={3}
+                  />
+
+                  <div className="grid grid-cols-2 gap-2">
+                    <div>
+                      <span className="text-[10px] text-ink/60 block mb-1">Font Size (pt)</span>
+                      <input
+                        type="number"
+                        min={8}
+                        max={72}
+                        value={selectedObject.fontSizePt}
+                        onChange={(e) =>
+                          updateObject(activePageIndex, selectedObject.id, {
+                            fontSizePt: Number(e.target.value),
+                          })
+                        }
+                        className="w-full p-1 border border-chrome-border bg-paper text-xs"
+                      />
+                    </div>
+                    <div>
+                      <span className="text-[10px] text-ink/60 block mb-1">Style</span>
+                      <button
+                        type="button"
+                        onClick={() =>
+                          updateObject(activePageIndex, selectedObject.id, {
+                            bold: !selectedObject.bold,
+                          })
+                        }
+                        className={`w-full p-1 border font-bold ${
+                          selectedObject.bold
+                            ? 'border-spot bg-spot text-spot-contrast'
+                            : 'border-chrome-border'
+                        }`}
+                      >
+                        Bold
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {/* Image specific props */}
+              {selectedObject.type === 'image' && (
+                <div className="flex flex-col gap-2">
+                  <div className="flex items-center justify-between">
+                    <span className="text-[10px] text-ink/60">Image Fitting</span>
+                    <div className="flex border border-chrome-border text-[11px]">
+                      <button
+                        type="button"
+                        onClick={() =>
+                          updateObject(activePageIndex, selectedObject.id, { imageFit: 'cover' })
+                        }
+                        className={`px-2 py-0.5 ${
+                          selectedObject.imageFit === 'cover'
+                            ? 'bg-spot text-spot-contrast font-bold'
+                            : ''
+                        }`}
+                      >
+                        Cover
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() =>
+                          updateObject(activePageIndex, selectedObject.id, { imageFit: 'contain' })
+                        }
+                        className={`px-2 py-0.5 border-l border-chrome-border ${
+                          selectedObject.imageFit === 'contain'
+                            ? 'bg-spot text-spot-contrast font-bold'
+                            : ''
+                        }`}
+                      >
+                        Contain
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {/* Shape specific props */}
+              {selectedObject.type === 'shape' && (
+                <div className="flex flex-col gap-2">
+                  <div className="flex items-center justify-between">
+                    <span className="text-[10px] text-ink/60">Shape Fill</span>
+                    <input
+                      type="color"
+                      value={selectedObject.fillColor || '#f4f4ee'}
+                      onChange={(e) =>
+                        updateObject(activePageIndex, selectedObject.id, {
+                          fillColor: e.target.value,
+                        })
+                      }
+                      className="w-8 h-6 p-0 border border-chrome-border cursor-pointer"
+                    />
+                  </div>
+                  <div className="flex items-center justify-between">
+                    <span className="text-[10px] text-ink/60">Border Color</span>
+                    <input
+                      type="color"
+                      value={selectedObject.strokeColor || '#121212'}
+                      onChange={(e) =>
+                        updateObject(activePageIndex, selectedObject.id, {
+                          strokeColor: e.target.value,
+                        })
+                      }
+                      className="w-8 h-6 p-0 border border-chrome-border cursor-pointer"
+                    />
+                  </div>
+                </div>
+              )}
+
+              {/* Opacity slider */}
+              <div className="flex flex-col gap-1 pt-1">
+                <div className="flex justify-between text-[10px] text-ink/60">
+                  <span>Opacity</span>
+                  <span>{Math.round(selectedObject.opacity * 100)}%</span>
+                </div>
+                <input
+                  type="range"
+                  min={0.1}
+                  max={1}
+                  step={0.05}
+                  value={selectedObject.opacity}
+                  onChange={(e) =>
+                    updateObject(activePageIndex, selectedObject.id, {
+                      opacity: Number(e.target.value),
+                    })
+                  }
+                  className="w-full accent-spot"
+                />
               </div>
             </div>
           ) : (
             <div className="text-xs text-ink/50 text-center p-4 border border-dashed border-chrome-border">
-              Click a text box on the canvas to inspect & edit it.
+              Click an object on the canvas or pick a layer to inspect properties.
             </div>
           )}
         </aside>
@@ -650,16 +824,34 @@ export const EditorShell: React.FC = () => {
           className="flex items-center gap-1.5 px-3 py-1.5 border border-chrome-border hover:border-spot bg-paper text-xs font-bold"
         >
           <ImageIcon size={14} className="text-spot" />
-          <span>{activePage.imageDataUrl ? 'Replace Image' : 'Add Image'}</span>
+          <span>Add Image</span>
         </button>
 
         <button
           type="button"
-          onClick={() => addTextBox(activePageIndex, 'My Zine Text')}
+          onClick={handleAddText}
           className="flex items-center gap-1.5 px-3 py-1.5 border border-chrome-border hover:border-spot bg-paper text-xs font-bold"
         >
           <Type size={14} className="text-spot" />
-          <span>Add Text Box</span>
+          <span>Add Text</span>
+        </button>
+
+        <button
+          type="button"
+          onClick={() => handleAddShape('rect')}
+          className="flex items-center gap-1.5 px-3 py-1.5 border border-chrome-border hover:border-spot bg-paper text-xs font-bold"
+        >
+          <Square size={14} className="text-spot" />
+          <span>Add Rectangle</span>
+        </button>
+
+        <button
+          type="button"
+          onClick={() => handleAddShape('circle')}
+          className="flex items-center gap-1.5 px-3 py-1.5 border border-chrome-border hover:border-spot bg-paper text-xs font-bold"
+        >
+          <Circle size={14} className="text-spot" />
+          <span>Add Circle</span>
         </button>
 
         <button
@@ -668,7 +860,7 @@ export const EditorShell: React.FC = () => {
           className="flex items-center gap-1.5 px-3 py-1.5 border border-chrome-border hover:border-spot bg-paper text-xs"
         >
           <Settings size={14} />
-          <span>Format Options</span>
+          <span>Options</span>
         </button>
       </footer>
 

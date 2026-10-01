@@ -1,0 +1,56 @@
+@import "tailwindcss";
+
+@theme {
+  --font-mono: "Courier New", Courier, monospace, ui-monospace;
+  --font-sans: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+
+  --color-paper: var(--paper-bg);
+  --color-ink: var(--ink-text);
+  --color-chrome: var(--chrome-bg);
+  --color-chrome-border: var(--chrome-border);
+  --color-spot: var(--spot-color);
+  --color-spot-contrast: var(--spot-contrast);
+}
+
+:root {
+  /* Light mode (default white paper) */
+  --paper-bg: #fcfcf9;
+  --ink-text: #121212;
+  --chrome-bg: #f4f4ee;
+  --chrome-border: #d4d4cc;
+  --spot-color: #ff2d6b; /* Default: Fluoro Pink */
+  --spot-contrast: #ffffff;
+}
+
+[data-theme="dark"] {
+  /* Dark mode (photocopy inverted / noir) */
+  --paper-bg: #111111;
+  --ink-text: #ededeb;
+  --chrome-bg: #1c1c1c;
+  --chrome-border: #333333;
+}
+
+[data-spot="pink"] {
+  --spot-color: #ff2d6b;
+  --spot-contrast: #ffffff;
+}
+
+[data-spot="blue"] {
+  --spot-color: #0078ff;
+  --spot-contrast: #ffffff;
+}
+
+/* Subtle xerox halftone & texture accents */
+.xerox-border {
+  border: 2px solid var(--ink-text);
+  box-shadow: 3px 3px 0px 0px var(--ink-text);
+}
+
+.xerox-border-sm {
+  border: 1px solid var(--ink-text);
+  box-shadow: 2px 2px 0px 0px var(--ink-text);
+}
+
+.spot-shadow {
+  box-shadow: 3px 3px 0px 0px var(--spot-color);
+}

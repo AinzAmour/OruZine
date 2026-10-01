@@ -1,0 +1,6 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32" fill="none">
+  <title>OruZine Logo</title>
+  <rect width="32" height="32" rx="4" fill="#111111"/>
+  <path d="M6 8L16 12L26 8V24L16 28L6 24V8Z" stroke="#FF2D6B" stroke-width="2" stroke-linejoin="round"/>
+  <path d="M16 12V28" stroke="#FF2D6B" stroke-width="2"/>
+</svg>

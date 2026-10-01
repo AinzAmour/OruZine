@@ -1,0 +1,20 @@
+{
+  "name": "oruzine",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "pnpm --filter @oruzine/web dev",
+    "build": "pnpm -r run build",
+    "test": "pnpm -r run test",
+    "lint": "biome check .",
+    "lint:fix": "biome check --write .",
+    "format": "biome format --write .",
+    "typecheck": "pnpm -r run typecheck"
+  },
+  "packageManager": "pnpm@10.33.2",
+  "devDependencies": {
+    "@biomejs/biome": "^2.5.15",
+    "typescript": "^5.9.3",
+    "vitest": "^3.2.7"
+  }
+}

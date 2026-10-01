@@ -1,4 +1,10 @@
-import { MINI_8_FORMAT, PAPER_SIZES, SADDLE_STITCH_FORMAT } from '@oruzine/formats';
+import {
+  ACCORDION_6_FORMAT,
+  MINI_8_FORMAT,
+  PAPER_SIZES,
+  QUARTER_FOLD_4_FORMAT,
+  SADDLE_STITCH_FORMAT,
+} from '@oruzine/formats';
 import { describe, expect, it } from 'vitest';
 import { impose } from './index';
 
@@ -208,5 +214,64 @@ describe('Imposition Engine - Saddle-Stitch Booklet (Duplex)', () => {
     // Sheet 0 Back: Left = 7, Right = 2
     expect(plan.sheets[1].cells[0].page).toBe(7);
     expect(plan.sheets[1].cells[1].page).toBe(2);
+  });
+});
+
+describe('Imposition Engine - 6-Page Accordion (Duplex)', () => {
+  const defaultOpts = {
+    paper: 'letter' as const,
+    margins: { top: 5, right: 5, bottom: 5, left: 5 },
+    bleedMm: 3,
+    rtl: false,
+  };
+
+  it('imposes 6-page accordion with front and back 3-panel strips', () => {
+    const plan = impose(ACCORDION_6_FORMAT, 6, defaultOpts);
+
+    expect(plan.sheets).toHaveLength(2); // Front and Back
+    expect(plan.sheets[0].cells).toHaveLength(3);
+    expect(plan.sheets[1].cells).toHaveLength(3);
+
+    // Front sheet: 1, 2, 3
+    expect(plan.sheets[0].cells[0].page).toBe(1);
+    expect(plan.sheets[0].cells[1].page).toBe(2);
+    expect(plan.sheets[0].cells[2].page).toBe(3);
+
+    // Back sheet: 6, 5, 4
+    expect(plan.sheets[1].cells[0].page).toBe(6);
+    expect(plan.sheets[1].cells[1].page).toBe(5);
+    expect(plan.sheets[1].cells[2].page).toBe(4);
+  });
+});
+
+describe('Imposition Engine - 4-Page Quarter Fold (Single-Sided)', () => {
+  const defaultOpts = {
+    paper: 'letter' as const,
+    margins: { top: 5, right: 5, bottom: 5, left: 5 },
+    bleedMm: 3,
+    rtl: false,
+  };
+
+  it('imposes 4-page quarter fold into single sheet with inverted top row', () => {
+    const plan = impose(QUARTER_FOLD_4_FORMAT, 4, defaultOpts);
+
+    expect(plan.sheets).toHaveLength(1);
+    expect(plan.sheets[0].cells).toHaveLength(4);
+
+    // Top row (rotated 180°): Page 4 (left), Page 1 (right)
+    const p4 = plan.sheets[0].cells.find((c) => c.col === 0 && c.row === 0);
+    const p1 = plan.sheets[0].cells.find((c) => c.col === 1 && c.row === 0);
+    expect(p4?.page).toBe(4);
+    expect(p4?.rotation).toBe(180);
+    expect(p1?.page).toBe(1);
+    expect(p1?.rotation).toBe(180);
+
+    // Bottom row (rotated 0°): Page 3 (left), Page 2 (right)
+    const p3 = plan.sheets[0].cells.find((c) => c.col === 0 && c.row === 1);
+    const p2 = plan.sheets[0].cells.find((c) => c.col === 1 && c.row === 1);
+    expect(p3?.page).toBe(3);
+    expect(p3?.rotation).toBe(0);
+    expect(p2?.page).toBe(2);
+    expect(p2?.rotation).toBe(0);
   });
 });

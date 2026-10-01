@@ -31,6 +31,7 @@ export interface BaseZineObject {
 export interface ImageObject extends BaseZineObject {
   type: 'image';
   imageDataUrl: string | null;
+  imageFile?: string;
   imageFit: 'cover' | 'contain';
   mask?: ImageMask;
   paperShadow?: boolean;

@@ -234,7 +234,137 @@ export const SADDLE_STITCH_FORMAT: FormatDefinition = {
   ],
 };
 
+export const ACCORDION_6_FORMAT: FormatDefinition = {
+  id: 'accordion-6',
+  name: '6-Page Accordion (Leporello)',
+  description:
+    'Continuous zig-zag folding strip zine. Single landscape sheet with 3 panels per side, folding into a pocket book.',
+  difficulty: 'easy',
+  needs: ['ruler'],
+  paper: {
+    sizes: ['letter', 'a4', 'a3'],
+    orientation: 'landscape',
+  },
+  pageCount: {
+    fixed: 6,
+  },
+  sidedness: 'duplex',
+  duplexFlip: 'short-edge',
+  readingDirection: 'ltr',
+  layout: {
+    type: 'table',
+    sheets: [
+      {
+        side: 'front',
+        cols: 3,
+        rows: 1,
+        cells: [
+          { col: 0, row: 0, page: 1, rotation: 0 },
+          { col: 1, row: 0, page: 2, rotation: 0 },
+          { col: 2, row: 0, page: 3, rotation: 0 },
+        ],
+      },
+      {
+        side: 'back',
+        cols: 3,
+        rows: 1,
+        cells: [
+          { col: 0, row: 0, page: 6, rotation: 0 },
+          { col: 1, row: 0, page: 5, rotation: 0 },
+          { col: 2, row: 0, page: 4, rotation: 0 },
+        ],
+      },
+    ],
+  },
+  foldLines: [
+    { x1: 1 / 3, y1: 0, x2: 1 / 3, y2: 1, type: 'fold' },
+    { x1: 2 / 3, y1: 0, x2: 2 / 3, y2: 1, type: 'fold' },
+  ],
+  cutLines: [],
+  foldSteps: [
+    {
+      step: 1,
+      title: 'Print Duplex (Short-Edge Flip)',
+      instruction:
+        'Print the single sheet on both sides using "Flip on Short Edge" so panels 1-3 and 4-6 align.',
+    },
+    {
+      step: 2,
+      title: 'First Mountain Fold',
+      instruction:
+        'With Cover (Page 1) face up, fold the first vertical crease (1/3 from left) backward.',
+    },
+    {
+      step: 3,
+      title: 'Second Valley Fold',
+      instruction:
+        'Fold the second vertical crease forward to create the zig-zag accordion accordion strip.',
+    },
+  ],
+};
+
+export const QUARTER_FOLD_4_FORMAT: FormatDefinition = {
+  id: 'quarter-fold-4',
+  name: '4-Page Quarter Fold',
+  description:
+    'No-cut French fold pamphlet. One landscape sheet folded in half twice to produce 4 pages with zero tools.',
+  difficulty: 'easy',
+  needs: [],
+  paper: {
+    sizes: ['letter', 'a4', 'a3', 'tabloid'],
+    orientation: 'landscape',
+  },
+  pageCount: {
+    fixed: 4,
+  },
+  sidedness: 'single',
+  readingDirection: 'ltr',
+  layout: {
+    type: 'table',
+    sheets: [
+      {
+        side: 'front',
+        cols: 2,
+        rows: 2,
+        cells: [
+          { col: 0, row: 0, page: 4, rotation: 180 },
+          { col: 1, row: 0, page: 1, rotation: 180 },
+          { col: 0, row: 1, page: 3, rotation: 0 },
+          { col: 1, row: 1, page: 2, rotation: 0 },
+        ],
+      },
+    ],
+  },
+  foldLines: [
+    { x1: 0, y1: 0.5, x2: 1, y2: 0.5, type: 'fold' },
+    { x1: 0.5, y1: 0, x2: 0.5, y2: 1, type: 'fold' },
+  ],
+  cutLines: [],
+  foldSteps: [
+    {
+      step: 1,
+      title: 'Print Single-Sided',
+      instruction:
+        'Print the sheet single-sided on Letter, A4, or Tabloid paper. No double-sided printing required.',
+    },
+    {
+      step: 2,
+      title: 'Horizontal Half Fold',
+      instruction:
+        'Fold the sheet in half horizontally along the center crease so the top row folds behind the bottom row.',
+    },
+    {
+      step: 3,
+      title: 'Vertical Center Fold',
+      instruction:
+        'Fold in half vertically down the center. Page 1 becomes your cover, opening to Pages 2-3 inside, with Page 4 on the back.',
+    },
+  ],
+};
+
 export const FORMAT_REGISTRY: Record<string, FormatDefinition> = {
   'mini-8': MINI_8_FORMAT,
   'saddle-stitch': SADDLE_STITCH_FORMAT,
+  'accordion-6': ACCORDION_6_FORMAT,
+  'quarter-fold-4': QUARTER_FOLD_4_FORMAT,
 };

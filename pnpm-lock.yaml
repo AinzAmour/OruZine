@@ -44,6 +44,9 @@ importers:
       dexie:
         specifier: ^4.0.11
         version: 4.4.6
+      fflate:
+        specifier: ^0.8.3
+        version: 0.8.3
       immer:
         specifier: ^11.0.1
         version: 11.1.18

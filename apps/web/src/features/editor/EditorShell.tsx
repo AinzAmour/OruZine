@@ -4,14 +4,17 @@ import { impose } from '@oruzine/imposition';
 import {
   ArrowLeft,
   ArrowRight,
+  BookOpen,
   CheckCircle2,
   Circle,
   Copy,
   Download,
+  FolderOpen,
   Image as ImageIcon,
   Maximize2,
   Redo,
   RotateCcw,
+  Save,
   Scissors,
   Settings,
   Sliders,
@@ -40,6 +43,12 @@ import { FilterStackModal, type FilterStackTarget } from '../filters/FilterStack
 import { FormatSetupModal } from '../format/FormatSetupModal';
 import { LooksModal } from '../looks/LooksModal';
 import { FoldGuideModal } from '../preview/FoldGuideModal';
+import {
+  downloadProjectFile,
+  exportProjectToZip,
+  importProjectFromZip,
+} from '../project/projectFileManager';
+import { TemplateGalleryModal } from '../templates/TemplateGalleryModal';
 import { LayersPanel } from './LayersPanel';
 import { TransformBox } from './TransformBox';
 
@@ -83,6 +92,7 @@ export const EditorShell: React.FC = () => {
   const [isExportOpen, setIsExportOpen] = useState<boolean>(false);
   const [isCollagePaletteOpen, setIsCollagePaletteOpen] = useState<boolean>(false);
   const [isCutoutModalOpen, setIsCutoutModalOpen] = useState<boolean>(false);
+  const [isTemplateGalleryOpen, setIsTemplateGalleryOpen] = useState<boolean>(false);
   const [filterModalTarget, setFilterModalTarget] = useState<FilterStackTarget | null>(null);
 
   const activeFormat = FORMAT_REGISTRY[formatId] || MINI_8_FORMAT;
@@ -98,6 +108,7 @@ export const EditorShell: React.FC = () => {
   const [hasRestorableSession, setHasRestorableSession] = useState<boolean>(false);
 
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const projectFileInputRef = useRef<HTMLInputElement>(null);
   const canvasRef = useRef<HTMLDivElement>(null);
 
   const activePage = pages[activePageIndex] ?? pages[0];
@@ -184,6 +195,34 @@ export const EditorShell: React.FC = () => {
         }
       };
       reader.readAsDataURL(file);
+    }
+    if (e.target) e.target.value = '';
+  };
+
+  // Export .oruzine project file (ZIP containing document.json + image blobs)
+  const handleSaveProject = async () => {
+    try {
+      const state = useDocumentStore.getState();
+      const zipBlob = await exportProjectToZip(state);
+      downloadProjectFile(zipBlob, state.title);
+    } catch (err) {
+      console.error('Failed to export project archive:', err);
+      alert('Could not export project file. Please try again.');
+    }
+  };
+
+  // Import .oruzine project file
+  const handleProjectFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    try {
+      const restored = await importProjectFromZip(file);
+      useDocumentStore.getState().loadDocument(restored);
+      setActivePageIndex(0);
+    } catch (err) {
+      console.error('Failed to import project archive:', err);
+      alert(`Failed to import project file: ${err instanceof Error ? err.message : String(err)}`);
     }
     if (e.target) e.target.value = '';
   };
@@ -338,6 +377,17 @@ export const EditorShell: React.FC = () => {
             </button>
           </div>
 
+          {/* Starter Templates */}
+          <button
+            type="button"
+            onClick={() => setIsTemplateGalleryOpen(true)}
+            className="flex items-center gap-1.5 px-2.5 py-1 border border-chrome-border text-xs hover:bg-paper transition-colors"
+            title="Choose from starter zine templates"
+          >
+            <BookOpen size={13} className="text-spot" />
+            <span>Templates</span>
+          </button>
+
           {/* Signature Looks */}
           <button
             type="button"
@@ -365,6 +415,28 @@ export const EditorShell: React.FC = () => {
           >
             <Scissors size={13} className="text-spot" />
             <span>How to Fold</span>
+          </button>
+
+          {/* Save .oruzine Project Archive */}
+          <button
+            type="button"
+            onClick={handleSaveProject}
+            className="flex items-center gap-1.5 px-2.5 py-1 border border-chrome-border text-xs hover:bg-paper transition-colors"
+            title="Save portable .oruzine project archive (ZIP with images)"
+          >
+            <Save size={13} className="text-spot" />
+            <span>Save .oruzine</span>
+          </button>
+
+          {/* Open .oruzine Project Archive */}
+          <button
+            type="button"
+            onClick={() => projectFileInputRef.current?.click()}
+            className="flex items-center gap-1.5 px-2.5 py-1 border border-chrome-border text-xs hover:bg-paper transition-colors"
+            title="Open existing .oruzine project archive"
+          >
+            <FolderOpen size={13} className="text-spot" />
+            <span>Open</span>
           </button>
 
           {/* Export Button */}
@@ -1049,12 +1121,21 @@ export const EditorShell: React.FC = () => {
         </aside>
       </div>
 
-      {/* Hidden File Input */}
+      {/* Hidden Image File Input */}
       <input
         type="file"
         ref={fileInputRef}
         onChange={handleImageFileChange}
         accept="image/*"
+        className="hidden"
+      />
+
+      {/* Hidden Project Archive File Input (.oruzine) */}
+      <input
+        type="file"
+        ref={projectFileInputRef}
+        onChange={handleProjectFileChange}
+        accept=".oruzine,.zip,application/zip,application/json"
         className="hidden"
       />
 
@@ -1134,6 +1215,10 @@ export const EditorShell: React.FC = () => {
         target={filterModalTarget}
       />
       <LooksModal isOpen={isLooksModalOpen} onClose={() => setIsLooksModalOpen(false)} />
+      <TemplateGalleryModal
+        isOpen={isTemplateGalleryOpen}
+        onClose={() => setIsTemplateGalleryOpen(false)}
+      />
     </div>
   );
 };

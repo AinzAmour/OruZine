@@ -74,6 +74,42 @@ export const FormatSetupModal: React.FC<FormatSetupModalProps> = ({ isOpen, onCl
 
               <button
                 type="button"
+                onClick={() => setFormat('quarter-fold-4', 4)}
+                className={`p-3 border text-left flex flex-col gap-1 transition-colors ${
+                  formatId === 'quarter-fold-4'
+                    ? 'border-spot bg-spot/10 text-spot font-bold'
+                    : 'border-chrome-border hover:bg-chrome'
+                }`}
+              >
+                <div className="flex items-center justify-between">
+                  <span className="text-xs font-bold">4-Page Quarter Fold</span>
+                  <span className="text-[10px] opacity-70">1 Sheet</span>
+                </div>
+                <span className="text-[10px] text-ink/70 font-normal leading-tight">
+                  French fold pamphlet. 2 folds, zero tools or cuts needed.
+                </span>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => setFormat('accordion-6', 6)}
+                className={`p-3 border text-left flex flex-col gap-1 transition-colors ${
+                  formatId === 'accordion-6'
+                    ? 'border-spot bg-spot/10 text-spot font-bold'
+                    : 'border-chrome-border hover:bg-chrome'
+                }`}
+              >
+                <div className="flex items-center justify-between">
+                  <span className="text-xs font-bold">6-Page Accordion</span>
+                  <span className="text-[10px] opacity-70">Duplex</span>
+                </div>
+                <span className="text-[10px] text-ink/70 font-normal leading-tight">
+                  Continuous Z-strip leporello zine. 3 panels per side.
+                </span>
+              </button>
+
+              <button
+                type="button"
                 onClick={() => setFormat('saddle-stitch', Math.max(4, pages.length))}
                 className={`p-3 border text-left flex flex-col gap-1 transition-colors ${
                   formatId === 'saddle-stitch'

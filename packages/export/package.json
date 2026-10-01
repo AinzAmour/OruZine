@@ -7,6 +7,11 @@
   "scripts": {
     "typecheck": "tsc --noEmit"
   },
+  "dependencies": {
+    "@cantoo/pdf-lib": "^2.11.1",
+    "@oruzine/formats": "workspace:*",
+    "@oruzine/imposition": "workspace:*"
+  },
   "devDependencies": {
     "typescript": "^5.8.2"
   }

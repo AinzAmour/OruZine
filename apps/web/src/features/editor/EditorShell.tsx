@@ -16,6 +16,7 @@ import {
   CheckCircle2,
   Circle,
   Copy,
+  Crop,
   Download,
   FlipHorizontal,
   FlipVertical,
@@ -51,6 +52,7 @@ import {
 } from '../../stores/documentStore';
 import { isHeicFile, processImageFile } from '../../utils/imageLoader';
 import { CollagePaletteModal } from '../collage/CollagePaletteModal';
+import { ImageCropModal } from '../collage/ImageCropModal';
 import { ImageCutoutModal } from '../collage/ImageCutoutModal';
 import { StickerView } from '../collage/StickerView';
 import { ExportModal } from '../export/ExportModal';
@@ -66,6 +68,7 @@ import {
 } from '../project/projectFileManager';
 import { TemplateGalleryModal } from '../templates/TemplateGalleryModal';
 import { LayersPanel } from './LayersPanel';
+import { MiniPagePreview } from './MiniPagePreview';
 import { TransformBox } from './TransformBox';
 
 export const EditorShell: React.FC = () => {
@@ -110,12 +113,14 @@ export const EditorShell: React.FC = () => {
   const [isExportOpen, setIsExportOpen] = useState<boolean>(false);
   const [isCollagePaletteOpen, setIsCollagePaletteOpen] = useState<boolean>(false);
   const [isCutoutModalOpen, setIsCutoutModalOpen] = useState<boolean>(false);
+  const [isCropModalOpen, setIsCropModalOpen] = useState<boolean>(false);
   const [isTemplateGalleryOpen, setIsTemplateGalleryOpen] = useState<boolean>(false);
   const [filterModalTarget, setFilterModalTarget] = useState<FilterStackTarget | null>(null);
 
   const [isConvertingHeic, setIsConvertingHeic] = useState<boolean>(false);
   const [showSafetyMargins, setShowSafetyMargins] = useState<boolean>(true);
   const [showGridDots, setShowGridDots] = useState<boolean>(false);
+  const [clipToPage, setClipToPage] = useState<boolean>(false);
   const [isDraggingOverCanvas, setIsDraggingOverCanvas] = useState<boolean>(false);
 
   const activeFormat = FORMAT_REGISTRY[formatId] || MINI_8_FORMAT;
@@ -580,14 +585,8 @@ export const EditorShell: React.FC = () => {
                       onClick={() => setActivePageIndex(idx)}
                       className="flex items-center gap-2 text-left flex-1"
                     >
-                      <div className="w-9 h-12 border border-dashed border-ink/30 bg-paper overflow-hidden flex items-center justify-center shrink-0 relative">
-                        {p.objects.length > 0 ? (
-                          <div className="text-[9px] text-ink/70 font-mono">
-                            {p.objects.length} obj
-                          </div>
-                        ) : (
-                          <span className="text-[9px] text-ink/40">p.{p.pageNumber}</span>
-                        )}
+                      <div className="w-10 h-14 border border-ink/30 bg-paper overflow-hidden flex items-center justify-center shrink-0 relative rounded-[1px] shadow-xs">
+                        <MiniPagePreview page={p} fontScale={0.18} />
                       </div>
                       <div className="flex flex-col">
                         <span className="text-xs">
@@ -709,6 +708,21 @@ export const EditorShell: React.FC = () => {
               >
                 Fill
               </button>
+
+              {selectedObject?.type === 'image' && (
+                <>
+                  <div className="h-3 w-px bg-chrome-border mx-0.5" />
+                  <button
+                    type="button"
+                    onClick={() => setIsCropModalOpen(true)}
+                    className="px-1.5 py-0.5 text-[10px] font-mono hover:bg-paper font-bold border border-transparent hover:border-chrome-border text-spot flex items-center gap-1"
+                    title="Canva-style Photo Crop & Frame"
+                  >
+                    <Crop size={11} />
+                    <span>Crop</span>
+                  </button>
+                </>
+              )}
             </div>
           )}
 
@@ -724,6 +738,22 @@ export const EditorShell: React.FC = () => {
             <div className="absolute top-4 right-4 flex items-center gap-1 bg-chrome border border-chrome-border p-1 text-xs z-30">
               {viewMode === 'page' && (
                 <>
+                  <button
+                    type="button"
+                    onClick={() => setClipToPage((c) => !c)}
+                    className={`px-2 py-0.5 font-mono text-[10px] font-bold border transition-colors ${
+                      !clipToPage
+                        ? 'border-spot bg-spot/10 text-spot'
+                        : 'border-transparent text-ink/60 hover:bg-paper'
+                    }`}
+                    title={
+                      clipToPage
+                        ? 'Trimmed View: Click to show Canva-style Bleed (elements sticking off edges)'
+                        : 'Bleed View: Canva-style free edge positioning active. Click to clip to page edges.'
+                    }
+                  >
+                    {clipToPage ? 'Trim' : 'Bleed'}
+                  </button>
                   <button
                     type="button"
                     onClick={() => setShowSafetyMargins((m) => !m)}
@@ -790,7 +820,9 @@ export const EditorShell: React.FC = () => {
               onDragOver={handleCanvasDragOver}
               onDragLeave={handleCanvasDragLeave}
               onDrop={handleCanvasDrop}
-              className="xerox-border transition-all duration-150 flex flex-col justify-between relative overflow-hidden select-none"
+              className={`xerox-border transition-all duration-150 flex flex-col justify-between relative select-none shadow-2xl ${
+                clipToPage ? 'overflow-hidden' : 'overflow-visible'
+              }`}
               style={{
                 width: `${canvasWidthPx}px`,
                 height: `${canvasHeightPx}px`,
@@ -852,6 +884,13 @@ export const EditorShell: React.FC = () => {
                     onClick={(e) => {
                       e.stopPropagation();
                       setSelectedObjectId(obj.id);
+                    }}
+                    onDoubleClick={(e) => {
+                      e.stopPropagation();
+                      if (obj.type === 'image') {
+                        setSelectedObjectId(obj.id);
+                        setIsCropModalOpen(true);
+                      }
                     }}
                     className={`absolute select-none pointer-events-auto cursor-pointer ${
                       isSelected ? 'ring-1 ring-spot/50' : ''
@@ -1043,7 +1082,7 @@ export const EditorShell: React.FC = () => {
                   return (
                     <div
                       key={`cell-${cell.col}-${cell.row}-${cell.page ?? 'blank'}`}
-                      className="absolute border border-chrome-border bg-paper flex flex-col items-center justify-center p-2 overflow-hidden shadow-sm"
+                      className="absolute border border-chrome-border bg-paper overflow-hidden shadow-xs"
                       style={{
                         left: `${cell.normalized.x * 100}%`,
                         top: `${cell.normalized.y * 100}%`,
@@ -1053,21 +1092,25 @@ export const EditorShell: React.FC = () => {
                         transformOrigin: 'center center',
                       }}
                     >
-                      {cell.page ? (
-                        <>
-                          <div className="relative z-10 bg-paper/90 px-1 text-[10px] font-bold">
-                            {cell.page === 1
-                              ? 'Cover (p.1)'
-                              : cell.page === pages.length
-                                ? `Back (p.${pages.length})`
-                                : `p.${cell.page}`}
-                          </div>
-                          <div className="text-[8px] text-ink/40">
-                            {pData?.objects.length ?? 0} objs
-                          </div>
-                        </>
+                      {pData ? (
+                        <div className="w-full h-full relative">
+                          <MiniPagePreview
+                            page={pData}
+                            fontScale={0.4}
+                            showBadge
+                            badgeLabel={
+                              cell.page === 1
+                                ? 'Cover (p.1)'
+                                : cell.page === pages.length
+                                  ? `Back (p.${pages.length})`
+                                  : `p.${cell.page}`
+                            }
+                          />
+                        </div>
                       ) : (
-                        <div className="text-[9px] text-ink/30 italic">Blank</div>
+                        <div className="w-full h-full flex items-center justify-center text-[9px] text-ink/30 italic">
+                          Blank
+                        </div>
                       )}
                     </div>
                   );
@@ -1426,6 +1469,22 @@ export const EditorShell: React.FC = () => {
                       </div>
                     </div>
 
+                    {/* Canva-Style Photo Crop Button */}
+                    <div className="flex items-center justify-between border-b border-chrome-border pb-2.5">
+                      <span className="text-[10px] text-ink/60 font-bold uppercase">
+                        Photo Crop & Frame
+                      </span>
+                      <button
+                        type="button"
+                        onClick={() => setIsCropModalOpen(true)}
+                        className="px-2.5 py-1 border border-spot bg-spot/10 text-spot hover:bg-spot hover:text-spot-contrast text-[11px] font-bold flex items-center gap-1.5 transition-colors"
+                        title="Canva-style Photo Crop Tool"
+                      >
+                        <Crop size={12} />
+                        <span>Edit Crop</span>
+                      </button>
+                    </div>
+
                     <div className="flex items-center justify-between">
                       <span className="text-[10px] text-ink/60 font-bold uppercase">
                         Image Fitting
@@ -1721,6 +1780,11 @@ export const EditorShell: React.FC = () => {
       <ImageCutoutModal
         isOpen={isCutoutModalOpen}
         onClose={() => setIsCutoutModalOpen(false)}
+        object={selectedObject?.type === 'image' ? selectedObject : null}
+      />
+      <ImageCropModal
+        isOpen={isCropModalOpen}
+        onClose={() => setIsCropModalOpen(false)}
         object={selectedObject?.type === 'image' ? selectedObject : null}
       />
       <FilterStackModal

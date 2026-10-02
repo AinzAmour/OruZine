@@ -37,6 +37,8 @@ export interface ImageObject extends BaseZineObject {
   paperShadow?: boolean;
   flipX?: boolean;
   flipY?: boolean;
+  originalImageDataUrl?: string;
+  cropRect?: { x: number; y: number; width: number; height: number };
   filters?: FilterInstance[];
 }
 
@@ -534,10 +536,13 @@ export const useDocumentStore = create<ZineDocumentState>((set, get) => ({
     const obj = page?.objects.find((o) => o.id === id);
     if (!obj || obj.locked) return;
 
-    const newX = Math.max(-0.2, Math.min(1.0, obj.xPercent + deltaXPercent));
-    const newY = Math.max(-0.2, Math.min(1.0, obj.yPercent + deltaYPercent));
+    const newX = Math.max(-0.8, Math.min(1.5, obj.xPercent + deltaXPercent));
+    const newY = Math.max(-0.8, Math.min(1.5, obj.yPercent + deltaYPercent));
 
-    get().updateObject(pageIndex, id, { xPercent: newX, yPercent: newY });
+    get().updateObject(pageIndex, id, {
+      xPercent: Number(newX.toFixed(4)),
+      yPercent: Number(newY.toFixed(4)),
+    });
   },
 
   bringForward: (pageIndex, id) => {

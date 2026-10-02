@@ -101,6 +101,40 @@ async function runReviewTest() {
     await page.screenshot({ path: path.join(SCREENSHOT_DIR, '03_image_aligned.png') });
     console.log('📸 Saved 03_image_aligned.png');
 
+    console.log('✂️ Testing Canva-Style Photo Crop Modal...');
+    const cropBtn = page.locator('button[title*="Photo Crop"]').or(page.locator('button:has-text("Edit Crop")')).first();
+    if (await cropBtn.isVisible()) {
+      await cropBtn.click();
+      await page.waitForTimeout(800);
+      await page.screenshot({ path: path.join(SCREENSHOT_DIR, '03a_crop_modal.png') });
+      console.log('📸 Saved 03a_crop_modal.png');
+
+      // Select 1:1 Aspect ratio
+      const squareBtn = page.locator('button:has-text("1:1")').first();
+      if (await squareBtn.isVisible()) {
+        await squareBtn.click();
+        await page.waitForTimeout(300);
+      }
+
+      // Click Apply Crop
+      const applyCropBtn = page.locator('button:has-text("Apply Crop")').first();
+      if (await applyCropBtn.isVisible()) {
+        await applyCropBtn.click();
+        await page.waitForTimeout(800);
+      }
+      await page.screenshot({ path: path.join(SCREENSHOT_DIR, '03b_image_cropped.png') });
+      console.log('📸 Saved 03b_image_cropped.png');
+    }
+
+    console.log('📐 Testing Canva-Style Sticking Off The Boundary (Bleed)...');
+    // Nudge left multiple times with Shift+ArrowLeft to stick off the left edge
+    for (let i = 0; i < 4; i++) {
+      await page.keyboard.press('Shift+ArrowLeft');
+      await page.waitForTimeout(100);
+    }
+    await page.screenshot({ path: path.join(SCREENSHOT_DIR, '03c_image_bleeding.png') });
+    console.log('📸 Saved 03c_image_bleeding.png');
+
     console.log('4️⃣ Testing Text Creation and Typography...');
     const addTextBtn = page.locator('button:has-text("Add Text")').first();
     await addTextBtn.click();

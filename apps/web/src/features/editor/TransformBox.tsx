@@ -40,8 +40,13 @@ export const TransformBox: React.FC<TransformBoxProps> = ({
       const deltaX = (moveEvent.clientX - startX) / canvasWidthPx;
       const deltaY = (moveEvent.clientY - startY) / canvasHeightPx;
 
-      let newX = Math.max(0, Math.min(1 - object.wPercent, initialX + deltaX));
-      let newY = Math.max(0, Math.min(1 - object.hPercent, initialY + deltaY));
+      // Allow bleeding and dragging off the canvas boundary (Canva style)
+      const minX = -object.wPercent + 0.03;
+      const maxX = 0.97;
+      const minY = -object.hPercent + 0.03;
+      const maxY = 0.97;
+      let newX = Math.max(minX, Math.min(maxX, initialX + deltaX));
+      let newY = Math.max(minY, Math.min(maxY, initialY + deltaY));
 
       let isSnapX = false;
       let isSnapY = false;
@@ -98,20 +103,20 @@ export const TransformBox: React.FC<TransformBoxProps> = ({
       let newY = initialY;
 
       if (corner === 'se') {
-        newW = Math.max(0.05, initialW + deltaX);
-        newH = Math.max(0.05, initialH + deltaY);
+        newW = Math.max(0.04, Math.min(3.0, initialW + deltaX));
+        newH = Math.max(0.04, Math.min(3.0, initialH + deltaY));
       } else if (corner === 'sw') {
-        newW = Math.max(0.05, initialW - deltaX);
+        newW = Math.max(0.04, Math.min(3.0, initialW - deltaX));
         newX = initialX + deltaX;
-        newH = Math.max(0.05, initialH + deltaY);
+        newH = Math.max(0.04, Math.min(3.0, initialH + deltaY));
       } else if (corner === 'ne') {
-        newW = Math.max(0.05, initialW + deltaX);
-        newH = Math.max(0.05, initialH - deltaY);
+        newW = Math.max(0.04, Math.min(3.0, initialW + deltaX));
+        newH = Math.max(0.04, Math.min(3.0, initialH - deltaY));
         newY = initialY + deltaY;
       } else if (corner === 'nw') {
-        newW = Math.max(0.05, initialW - deltaX);
+        newW = Math.max(0.04, Math.min(3.0, initialW - deltaX));
         newX = initialX + deltaX;
-        newH = Math.max(0.05, initialH - deltaY);
+        newH = Math.max(0.04, Math.min(3.0, initialH - deltaY));
         newY = initialY + deltaY;
       }
 
